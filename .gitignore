@@ -1,3 +1,16 @@
 .env
 __pycache__/
 results/
+*.db
+*.xlsx
+# user data folders
+user-data/
+user-data-1/
+user-data-2/
+user-data-3/
+user-data-4/
+user-data-5/
+user-data-6/
+user-data-7/
+user-data-8/
+__pycache__/
