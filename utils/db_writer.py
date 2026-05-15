@@ -1,16 +1,24 @@
-import sqlite3
 import os
+import sqlite3
+
 import pandas as pd
 
 DB_PATH = os.path.abspath("db/results.db")
 
 FIELDS = [
     "Part Number",
-    "Name", "Description", "Weight", "Cross-references",
-    "Material", "Dimensions", "Applicability", "Interchangeability"
+    "Name",
+    "Description",
+    "Weight",
+    "Cross-references",
+    "Material",
+    "Dimensions",
+    "Applicability",
+    "Interchangeability",
 ]
 
-def init_db():
+
+def init_db() -> None:
     os.makedirs("db", exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
@@ -32,7 +40,7 @@ def detail_exists(detail_number: str) -> bool:
     conn.close()
     return result is not None
 
-def save_results_bulk(data_list: list[tuple]):
+def save_results_bulk(data_list: list[tuple[str, ...]]) -> None:
     if not data_list:
         return
 
@@ -48,7 +56,7 @@ def save_results_bulk(data_list: list[tuple]):
     conn.close()
 
 
-def fetch_all():
+def fetch_all() -> pd.DataFrame | None:
     conn = sqlite3.connect(DB_PATH)
     df = None
     try:
@@ -56,3 +64,4 @@ def fetch_all():
     finally:
         conn.close()
     return df
+

@@ -1,18 +1,19 @@
-import pandas as pd
-from tqdm import tqdm
-from clients.llm_client import LLMClient
-from promts.generator import generate_prompt
-from utils.parse import parse_answer
-from utils.db_writer import init_db, fetch_all, FIELDS
-from openpyxl import Workbook
-from openpyxl.utils.dataframe import dataframe_to_rows
-from openpyxl.styles import Alignment, Font
-from utils.io import is_processed
-from utils.db_writer import save_results_bulk
-from config import settings
-import sqlite3
 
-def format_output_excel(filepath: str, df: pd.DataFrame):
+import pandas as pd
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font
+from openpyxl.utils.dataframe import dataframe_to_rows
+from tqdm import tqdm
+
+from clients.llm_client import LLMClient
+from config import settings
+from promts.generator import generate_prompt
+from utils.db_writer import fetch_all, init_db, save_results_bulk
+from utils.io import is_processed
+from utils.parse import parse_answer
+
+
+def format_output_excel(filepath: str, df: pd.DataFrame | None) -> None:
     wb = Workbook()
     ws = wb.active
 
@@ -33,15 +34,16 @@ def format_output_excel(filepath: str, df: pd.DataFrame):
 
     wb.save(filepath)
 
-def main():
+
+def main() -> None:
     init_db()
     df = pd.read_excel(settings.input_file, sheet_name=settings.sheet_name)
-    
+
     llm_client = LLMClient()
     buffer = []
 
     for start in range(0, len(df), settings.batch_size):
-        batch_df = df.iloc[start:start + settings.batch_size]
+        batch_df = df.iloc[start : start + settings.batch_size]
 
         for _, row in tqdm(batch_df.iterrows(), total=len(batch_df)):
             detail = str(row[settings.column_name])
@@ -61,6 +63,7 @@ def main():
 
     final_df = fetch_all()
     format_output_excel(settings.output_file, final_df)
+
 
 if __name__ == "__main__":
     main()

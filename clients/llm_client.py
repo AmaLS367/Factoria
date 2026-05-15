@@ -1,11 +1,14 @@
-from openai import OpenAI
-from config import settings
 import logging
+
+from openai import OpenAI
+
+from config import settings
 
 logger = logging.getLogger(__name__)
 
+
 class LLMClient:
-    def __init__(self):
+    def __init__(self) -> None:
         self.client = OpenAI(
             api_key=settings.openai_api_key,
             base_url=settings.openai_base_url,
@@ -22,11 +25,14 @@ class LLMClient:
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a technical expert in automotive spare parts. Provide information strictly according to the requested points."
+                        "content": (
+                            "You are a technical expert in automotive spare parts. "
+                            "Provide information strictly according to the requested points."
+                        ),
                     },
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": prompt},
                 ],
-                temperature=0.1, # Low temperature for more factual responses
+                temperature=0.1,  # Low temperature for more factual responses
             )
             return response.choices[0].message.content or ""
         except Exception as e:

@@ -1,6 +1,7 @@
 import re
 
-def parse_answer(answer: str) -> dict:
+
+def parse_answer(answer: str) -> dict[str, str]:
     fields = {
         "Name": "Not found",
         "Description": "Not found",

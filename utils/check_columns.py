@@ -1,6 +1,7 @@
 import sqlite3
 
-def show_columns():
+
+def show_columns() -> None:
     conn = sqlite3.connect("db/results.db")
     cursor = conn.cursor()
 
@@ -12,5 +13,6 @@ def show_columns():
         print(f"- {col[1]}")
 
     conn.close()
+
 
 show_columns()
