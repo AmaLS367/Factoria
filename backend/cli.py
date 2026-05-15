@@ -1,20 +1,20 @@
 import sys
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
-from rich.live import Live
-from rich.spinner import Spinner
 
 from clients.llm_client import LLMClient
 from config import settings
 from promts.generator import generate_prompt
-from utils.parse import parse_answer
+from rich.console import Console
+from rich.live import Live
+from rich.panel import Panel
+from rich.spinner import Spinner
+from rich.table import Table
 from utils.db_writer import init_db, save_results_bulk
+from utils.parse import parse_answer
 
 # Force UTF-8 for Windows if needed, but rich usually handles it
 console = Console()
 
-def process_single_item(item_id: str):
+def process_single_item(item_id: str) -> None:
     console.print(
         Panel(
             f"[bold blue]Processing {settings.item_label}:[/] [green]{item_id}[/]",
@@ -39,7 +39,12 @@ def process_single_item(item_id: str):
 
     # Display results
     title = f"Extracted Info: {item_id}"
-    table = Table(title=title, show_header=True, header_style="bold blue", border_style="bright_black")
+    table = Table(
+        title=title,
+        show_header=True,
+        header_style="bold blue",
+        border_style="bright_black"
+    )
     table.add_column("Field", style="dim", width=20)
     table.add_column("Value", style="bold white")
 
@@ -66,7 +71,7 @@ def process_single_item(item_id: str):
     save_results_bulk([row_data], settings.target_fields)
     console.print(f"\n[bold green]Success![/] [dim]({settings.db_path})[/]")
 
-def main():
+def main() -> None:
     console.print("[bold blue]Welcome to AI Data Collector CLI[/]\n", justify="center")
 
     if len(sys.argv) > 1:

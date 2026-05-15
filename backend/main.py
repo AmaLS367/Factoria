@@ -1,15 +1,14 @@
 import logging
 
 import pandas as pd
+from clients.llm_client import LLMClient
+from config import settings
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
-from tqdm import tqdm
-
-from clients.llm_client import LLMClient
-from config import settings
 from promts.generator import generate_prompt
+from tqdm import tqdm
 from utils.db_writer import detail_exists, fetch_all, init_db, save_results_bulk
 from utils.parse import parse_answer
 
