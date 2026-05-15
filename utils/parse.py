@@ -1,22 +1,22 @@
+import json
+import logging
 import re
 
+logger = logging.getLogger(__name__)
 
-def parse_answer(answer: str) -> dict[str, str]:
-    fields = {
-        "Name": "Not found",
-        "Description": "Not found",
-        "Weight": "Not found",
-        "Cross-references": "Not found",
-        "Material": "Not found",
-        "Dimensions": "Not found",
-        "Applicability": "Not found",
-        "Interchangeability": "Not found",
-    }
+def parse_answer(answer: str, fields: list[str]) -> dict[str, str]:
+    """
+    Parses LLM response as JSON. Falls back to 'Not found' for missing fields.
+    """
+    try:
+        # Try to find JSON block if it's wrapped in markdown
+        json_match = re.search(r"\{.*\}", answer, re.DOTALL)
+        if json_match:
+            data = json.loads(json_match.group())
+        else:
+            data = json.loads(answer)
 
-    for key in fields:
-        match = re.search(rf"{key}:\s*(.*)", answer, re.IGNORECASE)
-        if match:
-            value = match.group(1).strip()
-            fields[key] = value
-
-    return fields
+        return {field: str(data.get(field, "Not found")) for field in fields}
+    except Exception as e:
+        logger.warning(f"Failed to parse JSON response: {e}. Raw answer: {answer[:100]}...")
+        return {field: "Not found" for field in fields}

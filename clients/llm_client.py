@@ -25,10 +25,7 @@ class LLMClient:
                 messages=[
                     {
                         "role": "system",
-                        "content": (
-                            "You are a technical expert in automotive spare parts. "
-                            "Provide information strictly according to the requested points."
-                        ),
+                        "content": settings.system_prompt,
                     },
                     {"role": "user", "content": prompt},
                 ],

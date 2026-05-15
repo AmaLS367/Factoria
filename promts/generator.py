@@ -1,8 +1,8 @@
-def generate_prompt(part_number: str) -> str:
+def generate_prompt(item_id: str, item_label: str, fields: list[str]) -> str:
+    fields_str = ", ".join(fields)
     return (
-        f"Provide technical information for the spare part with number {part_number}: exact name, "
-        "description, weight, cross-references, material, dimensions, "
-        "applicability, and interchangeability. "
-        "If something is unknown, write 'Not found'. "
-        "No advertising, be precise and use a bulleted list."
+        f"Provide technical information for the {item_label} with ID '{item_id}'. "
+        f"Collect the following fields: {fields_str}. "
+        "If some information is missing, use 'Not found'. "
+        "Return ONLY a JSON object where keys match the requested fields exactly."
     )
