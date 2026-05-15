@@ -1,8 +1,22 @@
-# config.py
-import argparse
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Optional
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--profile", type=str, default="user-data")
-args = parser.parse_args()
+class Settings(BaseSettings):
+    # API Settings
+    openai_api_key: str = ""
+    openai_base_url: str = "https://api.deepseek.com/v1" # Default to deepseek
+    model_name: str = "deepseek-chat"
+    
+    # Project Settings
+    input_file: str = "input/input.xlsx"
+    output_file: str = "results/output.xlsx"
+    sheet_name: str = "Task1"
+    column_name: str = "Артикул"
+    batch_size: int = 1
+    
+    # SQLite
+    db_path: str = "results/database.sqlite"
 
-USER_DATA_DIR = args.profile
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+settings = Settings()

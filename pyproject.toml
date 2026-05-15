@@ -1,0 +1,23 @@
+[project]
+name = "parts-info-collector"
+version = "0.1.0"
+description = "Automation toolkit for mass collection of spare-part specs using AI. Reads part numbers from Excel, sends structured prompts, parses responses into SQLite and exports a formatted Excel report. Resilient to restarts and tuned for tens of thousands of rows."
+authors = [
+    { name = "Ama", email = "amalsdev367@gmail.com" }
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "openai>=1.14.0",
+    "pandas>=2.0.0",
+    "openpyxl>=3.1.0",
+    "python-dotenv>=1.0.0",
+    "tqdm>=4.66.0",
+    "pydantic-settings>=2.2.0"
+]
+
+[project.urls]
+Repository = "https://github.com/AmaLS367/parts_info_collector"
+
+[tool.uv]
+managed = true
