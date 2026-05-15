@@ -2,6 +2,7 @@
 import pandas as pd
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
+from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
 from tqdm import tqdm
 
@@ -14,15 +15,24 @@ from utils.parse import parse_answer
 
 
 def format_output_excel(filepath: str, df: pd.DataFrame | None) -> None:
+    if df is None or df.empty:
+        return
+
     wb = Workbook()
     ws = wb.active
+    if ws is None:
+        ws = wb.create_sheet()
 
     for row in dataframe_to_rows(df, index=False, header=True):
         ws.append(row)
 
     for col in ws.columns:
+        column_idx = col[0].column
+        if not isinstance(column_idx, int):
+            continue
+
         max_length = 0
-        col_letter = col[0].column_letter
+        col_letter = get_column_letter(column_idx)
         for cell in col:
             cell.alignment = Alignment(wrap_text=True, vertical="top")
             if cell.value:
@@ -40,7 +50,7 @@ def main() -> None:
     df = pd.read_excel(settings.input_file, sheet_name=settings.sheet_name)
 
     llm_client = LLMClient()
-    buffer = []
+    buffer: list[tuple[str, ...]] = []
 
     for start in range(0, len(df), settings.batch_size):
         batch_df = df.iloc[start : start + settings.batch_size]
