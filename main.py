@@ -10,8 +10,7 @@ from tqdm import tqdm
 from clients.llm_client import LLMClient
 from config import settings
 from promts.generator import generate_prompt
-from utils.db_writer import fetch_all, init_db, save_results_bulk
-from utils.io import is_processed
+from utils.db_writer import detail_exists, fetch_all, init_db, save_results_bulk
 from utils.parse import parse_answer
 
 # Setup logging
@@ -77,7 +76,7 @@ def main() -> None:
         for _, row in tqdm(batch_df.iterrows(), total=len(batch_df), desc="Processing batch"):
             item_id = str(row[settings.column_name])
 
-            if is_processed(item_id):
+            if detail_exists(item_id):
                 logger.debug(f"Skipping {item_id} — already in database")
                 continue
 
