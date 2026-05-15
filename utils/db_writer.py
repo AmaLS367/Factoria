@@ -5,9 +5,9 @@ import pandas as pd
 DB_PATH = os.path.abspath("db/results.db")
 
 FIELDS = [
-    "Номер детали",
-    "Название", "Описание", "Вес", "Кросс-номера",
-    "Материал", "Размеры", "Применяемость", "Взаимозаменяемость"
+    "Part Number",
+    "Name", "Description", "Weight", "Cross-references",
+    "Material", "Dimensions", "Applicability", "Interchangeability"
 ]
 
 def init_db():
@@ -18,7 +18,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS parts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             {" TEXT, ".join(f'"{f}"' for f in FIELDS)} TEXT,
-            UNIQUE("Номер детали")
+            UNIQUE("Part Number")
         )
     """)
     conn.commit()
@@ -27,7 +27,7 @@ def init_db():
 def detail_exists(detail_number: str) -> bool:
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
-    cur.execute("SELECT 1 FROM parts WHERE \"Номер детали\" = ?", (detail_number,))
+    cur.execute("SELECT 1 FROM parts WHERE \"Part Number\" = ?", (detail_number,))
     result = cur.fetchone()
     conn.close()
     return result is not None

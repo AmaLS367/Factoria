@@ -47,7 +47,7 @@ def main():
             detail = str(row[settings.column_name])
 
             if is_processed(detail):
-                print(f"[INFO] Пропускаю {detail} — уже в базе")
+                print(f"[INFO] Skipping {detail} — already in database")
                 continue
 
             prompt = generate_prompt(detail)

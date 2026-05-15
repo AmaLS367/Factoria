@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     input_file: str = "input/input.xlsx"
     output_file: str = "results/output.xlsx"
     sheet_name: str = "Task1"
-    column_name: str = "Артикул"
+    column_name: str = "Part Number"
     batch_size: int = 1
     
     # SQLite
