@@ -1,121 +1,190 @@
-# 🛠️ PARTS INFO COLLECTOR
+<div align="center">
 
-Скрипт для автоматического сбора технической информации о деталях с помощью Gemini AI.  
-Работает по списку номеров запчастей из Excel, формирует промт, отправляет в Gemini, парсит ответ и сохраняет результат построчно в базу данных SQLite, а по завершению — экспортирует в Excel с форматированием.
+<p align="center">
+  <img src="docs/assets/factoria-readme-logo.png" alt="Factoria - AI data collection toolkit" width="100%" />
+</p>
+
+<h1 align="center">Factoria</h1>
+
+<p align="center">
+  <strong>AI-powered data collection toolkit that finds, structures, stores, and exports information from item lists.</strong>
+</p>
+
+<p align="center">
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white">
+  <img alt="OpenAI Compatible" src="https://img.shields.io/badge/LLM-OpenAI_Compatible-111111?style=for-the-badge">
+  <img alt="SQLite" src="https://img.shields.io/badge/SQLite-Storage-003B57?style=for-the-badge&logo=sqlite&logoColor=white">
+  <img alt="Excel" src="https://img.shields.io/badge/Excel-Import%2FExport-217346?style=for-the-badge&logo=microsoftexcel&logoColor=white">
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge"></a>
+</p>
+
+<p align="center">
+  <img alt="Ruff" src="https://img.shields.io/badge/Ruff-Lint-FCC21B?style=for-the-badge">
+  <img alt="mypy" src="https://img.shields.io/badge/mypy-Strict-2A6DB2?style=for-the-badge">
+  <img alt="uv" src="https://img.shields.io/badge/uv-Managed-654FF0?style=for-the-badge">
+</p>
+
+<p align="center">
+  <a href="#-quick-start">Quick start</a> ·
+  <a href="#-features">Features</a> ·
+  <a href="#-how-it-works">How it works</a> ·
+  <a href="#-configuration">Configuration</a> ·
+  <a href="SECURITY.md">Security</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a> ·
+  <a href="CODE_OF_CONDUCT.md">Code of Conduct</a>
+</p>
+
+### Finds and structures any data.
+
+</div>
 
 ---
 
-## 🚀 Возможности
+## ✨ What Is Factoria?
 
-✅ Поддержка массовой обработки (40 000+ деталей)  
-✅ Устойчивость к сбоям и перезапускам  
-✅ Без повторной обработки уже сохранённых данных  
-✅ Структурированная запись по полям (название, вес, материал и т.д.)  
-✅ Быстрый экспорт в отформатированный `.xlsx`  
-✅ Работа через браузер без API
+**Factoria** turns a spreadsheet of items into structured, searchable data.
 
----
+Give it an Excel file, define the identifier column and target fields, and it will query an OpenAI-compatible LLM, parse the JSON response, save progress into SQLite, and export a formatted Excel report at the end.
 
-## 📂 Структура проекта
+It is built for long-running collection jobs where restarts, partial progress, and repeat runs should not destroy already collected results.
 
+## 💎 Why It Feels Useful
+
+Most data collection scripts break down when the list gets long.
+
+Factoria keeps the workflow boring in the good way:
+
+- **Excel in, Excel out**: use spreadsheets as the operator-facing interface.
+- **SQLite checkpointing**: already processed items are skipped on the next run.
+- **Structured fields**: responses are parsed into predictable columns.
+- **OpenAI-compatible LLMs**: works with DeepSeek/OpenAI-compatible chat APIs through one client.
+- **Batch processing**: configurable batch size for controlled throughput.
+- **CLI mode**: inspect one item interactively without running the full spreadsheet job.
+
+## 🌟 Features
+
+| Feature | What it does | Status |
+| --- | --- | --- |
+| 🧾 **Excel input** | Reads item identifiers from a configured sheet and column | Ready |
+| 🧠 **LLM extraction** | Sends generated prompts to an OpenAI-compatible chat model | Ready |
+| 🧩 **Configurable fields** | Uses `target_fields` to control the output schema | Ready |
+| 🗄️ **SQLite storage** | Saves collected rows and avoids duplicate processing | Ready |
+| 📊 **Formatted Excel export** | Writes a readable `.xlsx` report with wrapped cells and bold headers | Ready |
+| 🖥️ **Single-item CLI** | Query one item and print a Rich table in the terminal | Ready |
+| 🧪 **Typed codebase** | Ruff and strict mypy configuration are included | Ready |
+
+## 🧭 How It Works
+
+```mermaid
+sequenceDiagram
+    participant Excel as Input Excel
+    participant Runner as backend/main.py
+    participant Prompt as Prompt Generator
+    participant LLM as OpenAI-compatible LLM
+    participant Parser as JSON Parser
+    participant DB as SQLite
+    participant Export as Output Excel
+
+    Runner->>Excel: read sheet + identifier column
+    Runner->>DB: skip already saved items
+    Runner->>Prompt: build request from item + fields
+    Prompt->>LLM: ask for structured data
+    LLM-->>Parser: JSON-like answer
+    Parser-->>Runner: normalized field values
+    Runner->>DB: save batch
+    Runner->>Export: write formatted workbook
 ```
 
-PARTS\_INFO\_COLLECTOR/
-├── main.py               # Основной обработчик
-├── scrapers/
-│   └── gemini.py         # Модуль обращения к Gemini через Playwright
-├── utils/
-│   ├── parse.py          # Парсинг текста Gemini
-│   └── db\_writer.py      # Работа с SQLite
-├── db/
-│   └── results.db        # База данных с результатами
-├── input/
-│   └── input.xlsx        # Входной файл (Excel)
-├── results/
-│   └── output.xlsx       # Финальный результат
+## ⚡ Quick Start
 
-````
+Install dependencies:
 
----
+```powershell
+uv sync
+```
 
-## 📥 Как использовать
+Create local config:
 
-### 🔹 1. Первый запуск (настройка)
+```powershell
+Copy-Item .env.example .env
+```
 
-> 📄 **`first_start.bat`**
+Set your API values in `.env`:
 
-Этот файл устанавливает всё необходимое и открывает браузер для ручного входа в Gemini:
+```env
+OPENAI_API_KEY=your_deepseek_or_openai_api_key_here
+OPENAI_BASE_URL=https://api.deepseek.com/v1
+MODEL_NAME=deepseek-chat
+```
 
-1. Дважды кликните по `first_start.bat`
-2. Установятся все зависимости
-3. Откроется браузер
-4. Войдите в Google и отправьте 1 тестовый промт
-5. Закройте окно
+Run the full collector:
 
-Сессия будет сохранена локально, и всё готово для автозапуска.
+```powershell
+uv run python backend/main.py
+```
 
----
+Run a single item through the CLI:
 
-### 🔹 2. Основной запуск
+```powershell
+uv run python backend/cli.py "ABC-123"
+```
 
-> 📄 **`start.bat`**
+## ⚙️ Configuration
 
-После настройки просто запускайте `start.bat`:
+Runtime settings are loaded from `.env` through `pydantic-settings`.
 
-- Программа прочитает `input/input.xlsx`
-- Для каждой новой детали отправит запрос в Gemini
-- Сохранит результат в `db/results.db`
-- В конце экспортирует в `results/output.xlsx` (с форматированием)
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `OPENAI_API_KEY` | API key for the OpenAI-compatible provider | empty |
+| `OPENAI_BASE_URL` | Provider base URL | `https://api.deepseek.com/v1` |
+| `MODEL_NAME` | Chat model name | `deepseek-chat` |
+| `INPUT_FILE` | Excel input path | `input/input.xlsx` |
+| `OUTPUT_FILE` | Excel output path | `results/output.xlsx` |
+| `SHEET_NAME` | Sheet to read | `Task1` |
+| `COLUMN_NAME` | Identifier column name | `Item ID` |
+| `BATCH_SIZE` | Rows processed before flushing to SQLite | `5` |
+| `DB_PATH` | SQLite database path | `results/database.sqlite` |
 
----
+Default target fields live in [backend/config.py](backend/config.py). Change `target_fields`, `item_label`, and `system_prompt` there when adapting Factoria to a new domain.
 
-Важно: файл `start.bat` работает если есть куки, до запуска обязательно запустите файл first_start.bat
+## 🧪 Quality Checks
 
----
+```powershell
+uv run ruff check .
+uv run mypy .
+```
 
-## ⏱️ Производительность
+## 📁 Project Structure
 
-| Метод сохранения       | Примерная скорость        | Примечание          |
-| ---------------------- | ------------------------- | ------------------- |
-| Excel на каждом шаге   | \~100 деталей/час         | Медленно, из-за I/O |
-| SQLite + Excel в конце | **\~200–300 деталей/час** | Быстрее в 2–3 раза  |
-| Потоков 4 (параллель)  | \~800–1200 деталей/час    | Требует 4+ ГБ RAM   |
-| Через API (GPT/Gemini) | **1000–2000 в минуту**    | Требует API-ключ    |
+```text
+Factoria/
+├── backend/
+│   ├── cli.py                  # Single-item interactive CLI
+│   ├── main.py                 # Batch Excel -> LLM -> SQLite -> Excel runner
+│   ├── config.py               # pydantic-settings configuration
+│   ├── clients/
+│   │   └── llm_client.py       # OpenAI-compatible chat client
+│   ├── promts/
+│   │   └── generator.py        # Prompt builder
+│   └── utils/
+│       ├── db_writer.py        # SQLite persistence
+│       ├── parse.py            # LLM response parser
+│       └── check_columns.py    # Input validation helpers
+├── docs/assets/                # README logo and GitHub social preview
+├── results/                    # Runtime database and exported workbooks
+├── .env.example                # Local configuration template
+├── pyproject.toml              # Project metadata and tool config
+└── uv.lock                     # Locked dependency graph
+```
 
----
+## 🏷️ Repository Setup Tips
 
-## ⚙️ Настройки
-
-* Все параметры (`input`, `output`, `sheet name`, колонки) можно изменить в `main.py`
-* `gemini.py` запускает Playwright Chromium с сохранённой сессией (`user-data/`)
-* Можно использовать `headless=True` для ускорения, но только после авторизации, возможны ошибки 
----
-
-## ⚠️ Важно
-
-* Не удаляйте папку `user-data/` — она хранит вход в Gemini
-* Повторный запуск скрипта не затронет уже обработанные детали
-* При желании можно распараллелить скрипт или перейти на API (см. roadmap ниже)
-
----
-
-## 🔐 Безопасность
-* Папка user-data/ не включена в архив, файлы в нём формируются автоматически после первого запуска
-* Вы должны вручную пройти через auth_gemini.py
-* Сессия сохранится локально и используется для всех последующих запусков, если хотите кому-то передать проект удалите всё в папке user-data/
-
----
-
-## 🧭 Roadmap (расширения по запросу)
-* Поддержка параллельной обработки (многопроцессность)
-* Переход на API (GPT или Gemini)
-* Отображение прогресса или лог-файл
-* Веб-интерфейс для ручной генерации отчётов
+- **Description:** AI data collection toolkit that reads item lists from Excel, extracts structured facts with OpenAI-compatible LLMs, checkpoints to SQLite, and exports formatted reports.
+- **Topics:** `python`, `ai`, `data-collection`, `llm`, `openai`, `deepseek`, `sqlite`, `excel`, `automation`, `uv`.
+- **Social preview:** upload `docs/assets/github-social-preview.png` in GitHub repository settings.
+- **README image:** use `docs/assets/factoria-readme-logo.png` for transparent README branding.
+- **Community:** keep [Security](SECURITY.md), [Contributing](CONTRIBUTING.md), [Code of Conduct](CODE_OF_CONDUCT.md), and [License](LICENSE) visible.
 
 ---
 
-## 📌 Примечания
-* Если вы удалите db/results.db — она будет создана автоматически
-* output.xlsx форматируется: перенос строк, ширина колонок, жирные заголовки
-* Результат можно читать глазами, экспортировать, фильтровать и т.д.
-* requirements.txt содержит всё необходимое
+Made for turning messy item lists into structured data you can actually use.
