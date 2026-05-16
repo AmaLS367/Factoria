@@ -45,7 +45,7 @@ class ResearchAgent:
         if parsed.get(SOURCES_FIELD) in {None, "", "Not found"}:
             parsed[SOURCES_FIELD] = format_sources(search_results)
 
-        return parsed
+        return {k: v if v is not None else "" for k, v in parsed.items()}
 
 
 def ensure_sources_field(fields: list[str]) -> list[str]:
