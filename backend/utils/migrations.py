@@ -231,8 +231,7 @@ def _migrate_legacy_data(cur: sqlite3.Cursor, context: MigrationContext) -> None
         id_col = 'id'
 
     if id_col not in columns:
-        logger.warning(f"Identifier column '{id_col}' not found in legacy_results. Cannot migrate data.")  # noqa: E501
-        return
+        raise RuntimeError(f"Identifier column '{id_col}' not found in legacy_results. Cannot migrate data.")  # noqa: E501
 
     fields = [c for c in columns if c not in ["id", id_col]]
 
@@ -240,7 +239,11 @@ def _migrate_legacy_data(cur: sqlite3.Cursor, context: MigrationContext) -> None
 
     for row in rows:
         row_dict = dict(zip(columns, row, strict=False))
-        identifier_value = row_dict[id_col]
+        identifier_value = row_dict.get(id_col)
+
+        # If the new identifier column doesn't have a value for this legacy row, fallback to the original identifier if possible  # noqa: E501
+        if identifier_value is None and len(columns) > 1:
+            identifier_value = row_dict.get(columns[1])
 
         if not identifier_value:
             continue

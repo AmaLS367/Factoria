@@ -87,10 +87,13 @@ def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> No
                 if i == 0:
                     continue  # Skip item_id itself
 
-                field_value = str(row_data[i])
+                val = row_data[i]
+                if val is None:
+                    continue
+                field_value = str(val)
 
                 if field_name == "Sources":
-                    urls = [u.strip() for u in field_value.split("\n") if u.strip() and u.strip() != "Not found"]  # noqa: E501
+                    urls = [u.strip() for u in field_value.split("\n") if u.strip()]
                     for url in urls:
                         cur.execute(
                             """
@@ -121,7 +124,7 @@ def fetch_all() -> pd.DataFrame | None:
         # Fetch items
         items_df = pd.read_sql_query("SELECT id, identifier_value FROM items", conn)
         if items_df.empty:
-            return pd.DataFrame()
+            return pd.DataFrame(columns=[settings.column_name])
 
         items_df = items_df.rename(columns={"identifier_value": settings.column_name})
 
@@ -140,7 +143,7 @@ def fetch_all() -> pd.DataFrame | None:
         sources_df = pd.read_sql_query("SELECT item_id, url FROM item_sources", conn)
         if not sources_df.empty:
             # Group by item_id and join URLs with newline
-            sources_grouped = sources_df.groupby("item_id")["url"].apply(lambda urls: "\n".join(urls)).reset_index()  # noqa: E501
+            sources_grouped = sources_df.groupby("item_id")["url"].apply(lambda urls: "\n".join(dict.fromkeys(urls))).reset_index()  # noqa: E501
             sources_grouped = sources_grouped.rename(columns={"url": "Sources"})
 
             # Merge sources
