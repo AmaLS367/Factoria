@@ -17,6 +17,8 @@ dependencies = [
     "rich>=15.0.0",
     "requests>=2.34.2",
     "ddgs>=9.14.4",
+    "fastapi>=0.136.1",
+    "uvicorn>=0.47.0",
 ]
 
 [project.urls]
@@ -41,7 +43,11 @@ select = ["E", "F", "B", "W", "I"]
 ignore = []
 
 [tool.mypy]
+explicit_package_bases = true
 python_version = "3.10"
 ignore_missing_imports = true
 strict = true
 
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
