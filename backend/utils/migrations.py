@@ -47,9 +47,6 @@ def run_migrations(
         )
         logger.info("Applied database migration %s_%s", migration.version, migration.name)
 
-    sync_configured_result_columns(cur, context)
-    ensure_identifier_index(cur, context.identifier_column)
-
 
 def ensure_migration_table(cur: sqlite3.Cursor) -> None:
     cur.execute(
@@ -69,31 +66,55 @@ def create_results_table(cur: sqlite3.Cursor, context: MigrationContext) -> None
         if field != context.identifier_column:
             columns.append(f"{quote_identifier(field)} TEXT")
 
+    # If the identifier column name is the same as one of the fields, or if one of the fields was 'id', we avoid dupes  # noqa: E501
+    unique_columns = []
+    seen = set()
+    for col in columns:
+        c = col.split(" ")[0].strip('"')
+        if c.lower() == 'id':
+            # Skip if it conflicts with `id INTEGER PRIMARY KEY`
+            continue
+        if c not in seen:
+            unique_columns.append(col)
+            seen.add(c)
+
     cur.execute(
         f"""
         CREATE TABLE IF NOT EXISTS results (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            {', '.join(columns)}
+            {', '.join(unique_columns)}
         )
         """
     )
 
 
 def sync_configured_result_columns(cur: sqlite3.Cursor, context: MigrationContext) -> None:
+    # Check if results exists first
+    table_exists = cur.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='results'"
+    ).fetchone() is not None
+
+    if not table_exists:
+        return
+
     existing_columns = {
         str(row[1])
         for row in cur.execute("PRAGMA table_info(results)").fetchall()
     }
 
     for field in dict.fromkeys([context.identifier_column, *context.fields]):
-        if field == "id" or field in existing_columns:
+        if field.lower() == "id" or field in existing_columns:
             continue
         cur.execute(f"ALTER TABLE results ADD COLUMN {quote_identifier(field)} TEXT")
         existing_columns.add(field)
         logger.info("Added missing database column: %s", field)
 
+    ensure_identifier_index(cur, context.identifier_column)
+
 
 def ensure_identifier_index(cur: sqlite3.Cursor, identifier_column: str) -> None:
+    if identifier_column.lower() == 'id':
+        return
     index_name = f"idx_results_{identifier_column}_unique"
     try:
         cur.execute(
@@ -104,6 +125,166 @@ def ensure_identifier_index(cur: sqlite3.Cursor, identifier_column: str) -> None
         logger.warning("Could not create unique index for %s: %s", identifier_column, exc)
 
 
+def create_normalized_tables(cur: sqlite3.Cursor, context: MigrationContext) -> None:
+    # Check if 'results' table exists before we do anything
+    table_exists = cur.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='results'"
+    ).fetchone() is not None
+
+    if table_exists:
+        cur.execute("ALTER TABLE results RENAME TO legacy_results")
+
+    # 1. runs
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            finished_at TEXT,
+            status TEXT NOT NULL DEFAULT 'running',
+            input_file TEXT,
+            output_file TEXT,
+            model_name TEXT,
+            web_search_provider TEXT
+        )
+        """
+    )
+
+    # 2. items
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER,
+            identifier_column TEXT NOT NULL,
+            identifier_value TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'completed',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(run_id) REFERENCES runs(id)
+        )
+        """
+    )
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_items_identifier ON items (identifier_column, identifier_value)"  # noqa: E501
+    )
+
+    # 3. item_fields
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS item_fields (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id INTEGER NOT NULL,
+            field_name TEXT NOT NULL,
+            field_value TEXT,
+            confidence REAL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(item_id) REFERENCES items(id)
+        )
+        """
+    )
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_item_fields_item_id_name ON item_fields (item_id, field_name)"  # noqa: E501
+    )
+
+    # 4. item_sources
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS item_sources (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id INTEGER NOT NULL,
+            title TEXT,
+            url TEXT,
+            snippet TEXT,
+            provider TEXT,
+            retrieved_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(item_id) REFERENCES items(id)
+        )
+        """
+    )
+
+    # Migrate data from legacy_results if it existed
+    if table_exists:
+        _migrate_legacy_data(cur, context)
+
+
+def _migrate_legacy_data(cur: sqlite3.Cursor, context: MigrationContext) -> None:
+    # 1. Create a dummy run for legacy data
+    cur.execute(
+        """
+        INSERT INTO runs (status, input_file, output_file, model_name, web_search_provider)
+        VALUES ('legacy_migrated', 'legacy', 'legacy', 'legacy', 'legacy')
+        """
+    )
+    run_id = cur.lastrowid
+
+    # Get column names from legacy_results
+    columns_info = cur.execute("PRAGMA table_info(legacy_results)").fetchall()
+    # (cid, name, type, notnull, dflt_value, pk)
+    columns = [col[1] for col in columns_info]
+
+    id_col = context.identifier_column
+
+    # If ID was the identifier_column but skipped in the results creation due to lowercase `id` matching  # noqa: E501
+    if id_col not in columns and id_col.lower() == 'id':
+        id_col = 'id'
+
+    if id_col not in columns:
+        logger.warning(f"Identifier column '{id_col}' not found in legacy_results. Cannot migrate data.")  # noqa: E501
+        return
+
+    fields = [c for c in columns if c not in ["id", id_col]]
+
+    rows = cur.execute("SELECT * FROM legacy_results").fetchall()
+
+    for row in rows:
+        row_dict = dict(zip(columns, row, strict=False))
+        identifier_value = row_dict[id_col]
+
+        if not identifier_value:
+            continue
+
+        identifier_value = str(identifier_value)
+
+        # 2. Insert item
+        cur.execute(
+            """
+            INSERT INTO items (run_id, identifier_column, identifier_value)
+            VALUES (?, ?, ?)
+            """,
+            (run_id, context.identifier_column, identifier_value) # Store the proper case column name  # noqa: E501
+        )
+        item_id = cur.lastrowid
+
+        # 3. Insert fields and sources
+        for field in fields:
+            val = row_dict.get(field)
+            if val is None:
+                continue
+            val_str = str(val)
+
+            if field == "Sources":
+                # Split sources by newline
+                urls = [u.strip() for u in val_str.split("\n") if u.strip()]
+                for url in urls:
+                    cur.execute(
+                        """
+                        INSERT INTO item_sources (item_id, title, url, snippet, provider)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (item_id, "", url, "", "legacy")
+                    )
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO item_fields (item_id, field_name, field_value)
+                    VALUES (?, ?, ?)
+                    """,
+                    (item_id, field, val_str)
+                )
+
+
 def quote_identifier(identifier: str) -> str:
     return f'"{identifier.replace(chr(34), chr(34) + chr(34))}"'
 
@@ -111,4 +292,5 @@ def quote_identifier(identifier: str) -> str:
 MIGRATIONS = [
     Migration(1, "create_results_table", create_results_table),
     Migration(2, "sync_configured_result_columns", sync_configured_result_columns),
+    Migration(3, "create_normalized_tables", create_normalized_tables),
 ]
