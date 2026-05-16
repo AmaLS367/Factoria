@@ -1,16 +1,14 @@
 import logging
 
 import pandas as pd
-from clients.llm_client import LLMClient
+from agents.research_agent import ResearchAgent, ensure_sources_field
 from config import settings
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
-from promts.generator import generate_prompt
 from tqdm import tqdm
 from utils.db_writer import detail_exists, fetch_all, init_db, save_results_bulk
-from utils.parse import parse_answer
 
 # Setup logging
 logging.basicConfig(
@@ -58,7 +56,8 @@ def format_output_excel(filepath: str, df: pd.DataFrame | None) -> None:
 
 def main() -> None:
     logger.info("Starting AI Data Collector")
-    init_db(settings.target_fields)
+    output_fields = ensure_sources_field(settings.target_fields)
+    init_db(output_fields)
 
     try:
         df = pd.read_excel(settings.input_file, sheet_name=settings.sheet_name)
@@ -66,7 +65,7 @@ def main() -> None:
         logger.error(f"Failed to read input file: {e}")
         return
 
-    llm_client = LLMClient()
+    agent = ResearchAgent()
     buffer: list[tuple[str, ...]] = []
 
     for start in range(0, len(df), settings.batch_size):
@@ -79,19 +78,17 @@ def main() -> None:
                 logger.debug(f"Skipping {item_id} — already in database")
                 continue
 
-            prompt = generate_prompt(item_id, settings.item_label, settings.target_fields)
-            answer = llm_client.get_answer(prompt)
-            parsed = parse_answer(answer, settings.target_fields)
+            parsed = agent.collect_item(item_id, output_fields)
 
             row_data = (item_id, *[
                 parsed.get(f, "Not found")
-                for f in settings.target_fields
+                for f in output_fields
                 if f != settings.column_name
             ])
             buffer.append(row_data)
 
         if buffer:
-            save_results_bulk(buffer, settings.target_fields)
+            save_results_bulk(buffer, output_fields)
             buffer.clear()
 
     final_df = fetch_all()

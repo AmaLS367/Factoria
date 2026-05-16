@@ -1,15 +1,16 @@
-import sys
+import argparse
+import json
 
+from agents.research_agent import ResearchAgent, build_search_query, ensure_sources_field
 from clients.llm_client import LLMClient
 from config import settings
-from promts.generator import generate_prompt
 from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.table import Table
+from tools.web_search import WebSearchTool
 from utils.db_writer import init_db, save_results_bulk
-from utils.parse import parse_answer
 
 # Force UTF-8 for Windows if needed, but rich usually handles it
 console = Console()
@@ -23,12 +24,10 @@ def process_single_item(item_id: str) -> None:
     )
 
     with Live(Spinner("dots", text="Consulting AI..."), refresh_per_second=10, transient=True):
-        client = LLMClient()
-        prompt = generate_prompt(item_id, settings.item_label, settings.target_fields)
+        agent = ResearchAgent(llm_client=LLMClient())
 
         try:
-            raw_response = client.get_answer(prompt)
-            data = parse_answer(raw_response, settings.target_fields)
+            data = agent.collect_item(item_id)
         except Exception as e:
             console.print(f"[bold red]Error:[/] {e}")
             return
@@ -59,23 +58,44 @@ def process_single_item(item_id: str) -> None:
     console.print(table)
 
     # Save to DB
-    init_db(settings.target_fields)
+    output_fields = ensure_sources_field(settings.target_fields)
+    init_db(output_fields)
 
     # Prepare row for DB
     row_data = (item_id, *[
         data.get(f, "Not found")
-        for f in settings.target_fields
+        for f in output_fields
         if f != settings.column_name
     ])
 
-    save_results_bulk([row_data], settings.target_fields)
+    save_results_bulk([row_data], output_fields)
     console.print(f"\n[bold green]Success![/] [dim]({settings.db_path})[/]")
 
+
+def search_item(item_id: str) -> None:
+    output_fields = ensure_sources_field(settings.target_fields)
+    query = build_search_query(item_id, settings.item_label, output_fields)
+    results = WebSearchTool().search(query)
+    print(json.dumps([result.to_dict() for result in results], ensure_ascii=False, indent=2))
+
 def main() -> None:
+    parser = argparse.ArgumentParser(description="AI Data Collector CLI")
+    parser.add_argument("item", nargs="*", help="Item identifier or search query")
+    parser.add_argument("--search", action="store_true", help="Run only the web search tool")
+    args = parser.parse_args()
+
+    if args.search:
+        item_id = " ".join(args.item).strip()
+        if not item_id:
+            print(json.dumps({"error": "Item identifier cannot be empty"}, ensure_ascii=False))
+            return
+        search_item(item_id)
+        return
+
     console.print("[bold blue]Welcome to AI Data Collector CLI[/]\n", justify="center")
 
-    if len(sys.argv) > 1:
-        item_id = " ".join(sys.argv[1:])
+    if args.item:
+        item_id = " ".join(args.item)
     else:
         try:
             item_id = console.input(f"[bold yellow]Enter {settings.item_label}: [/]")
