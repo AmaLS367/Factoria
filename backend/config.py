@@ -2,10 +2,41 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    # API Settings
+    # API Settings (Legacy)
     openai_api_key: str = ""
     openai_base_url: str = "https://api.deepseek.com/v1"
     model_name: str = "deepseek-chat"
+
+    # New API Settings
+    llm_provider: str = ""
+    llm_api_key: str = ""
+    llm_base_url: str = ""
+    llm_model: str = ""
+    llm_timeout_seconds: int = 60
+
+    @property
+    def resolved_llm_provider(self) -> str:
+        return self.llm_provider if self.llm_provider else "openai-compatible"
+
+    @property
+    def resolved_llm_api_key(self) -> str:
+        return self.llm_api_key if self.llm_api_key else self.openai_api_key
+
+    @property
+    def resolved_llm_base_url(self) -> str:
+        if self.llm_base_url:
+            return self.llm_base_url
+        if self.resolved_llm_provider == "ollama":
+            return "http://localhost:11434"
+        return self.openai_base_url
+
+    @property
+    def resolved_llm_model(self) -> str:
+        return self.llm_model if self.llm_model else self.model_name
+
+    @property
+    def resolved_llm_timeout_seconds(self) -> int:
+        return self.llm_timeout_seconds
 
     # Web Search Settings
     web_search_enabled: bool = True

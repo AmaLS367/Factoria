@@ -1,4 +1,4 @@
-from typing import Protocol
+from typing import Protocol, cast
 
 from clients.llm_client import LLMClient
 from config import settings
@@ -45,7 +45,7 @@ class ResearchAgent:
         if parsed.get(SOURCES_FIELD) in {None, "", "Not found"}:
             parsed[SOURCES_FIELD] = format_sources(search_results)
 
-        return parsed
+        return cast(dict[str, str], parsed)
 
 
 def ensure_sources_field(fields: list[str]) -> list[str]:

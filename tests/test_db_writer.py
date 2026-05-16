@@ -157,7 +157,7 @@ def test_save_results_bulk_raises_value_error_for_short_row(mock_db_writer: Path
 def test_save_results_bulk_stores_none_as_null(mock_db_writer: Path) -> None:
     db_writer.init_db(["Name", "Description"])
     # First field is item_id, second is Name, third is Description
-    db_writer.save_results_bulk([("A", None, "A Description")], ["Name", "Description"]) # type: ignore
+    db_writer.save_results_bulk([("A", None, "A Description")], ["Name", "Description"])
 
     conn = sqlite3.connect(mock_db_writer)
     try:
