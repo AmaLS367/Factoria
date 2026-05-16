@@ -3,9 +3,10 @@ from abc import ABC, abstractmethod
 from typing import Any, cast
 
 import requests
-from backend.config import settings
 from openai import OpenAI
 from requests.exceptions import RequestException
+
+from backend.config import settings
 
 logger = logging.getLogger(__name__)
 

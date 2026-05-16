@@ -3,8 +3,9 @@ from dataclasses import dataclass
 from typing import Protocol, cast
 
 import requests
-from backend.config import settings
 from ddgs import DDGS
+
+from backend.config import settings
 
 logger = logging.getLogger(__name__)
 

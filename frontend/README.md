@@ -17,7 +17,7 @@ Ensure the Factoria backend is running locally.
 `npm install`
 
 2. Start the dev server:
-`npm run dev &`
+`npm run dev `
 
 The frontend will run at `http://localhost:5173` by default.
 

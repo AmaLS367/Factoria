@@ -1,26 +1,31 @@
+import os
+import sys
+
+# Add the project root to sys.path so 'backend.*' imports work when run as a script
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 import argparse
 import json
 
-from backend.agents.research_agent import ResearchAgent, build_search_query, ensure_sources_field
-from backend.clients.llm_client import LLMClient
-from backend.config import settings
 from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.table import Table
+
+from backend.agents.research_agent import ResearchAgent, build_search_query, ensure_sources_field
+from backend.clients.llm_client import LLMClient
+from backend.config import settings
 from backend.tools.web_search import WebSearchTool
 from backend.utils.db_writer import init_db, save_results_bulk
 
 # Force UTF-8 for Windows if needed, but rich usually handles it
 console = Console()
 
+
 def process_single_item(item_id: str) -> None:
     console.print(
-        Panel(
-            f"[bold blue]Processing {settings.item_label}:[/] [green]{item_id}[/]",
-            expand=False
-        )
+        Panel(f"[bold blue]Processing {settings.item_label}:[/] [green]{item_id}[/]", expand=False)
     )
 
     with Live(Spinner("dots", text="Consulting AI..."), refresh_per_second=10, transient=True):
@@ -39,10 +44,7 @@ def process_single_item(item_id: str) -> None:
     # Display results
     title = f"Extracted Info: {item_id}"
     table = Table(
-        title=title,
-        show_header=True,
-        header_style="bold blue",
-        border_style="bright_black"
+        title=title, show_header=True, header_style="bold blue", border_style="bright_black"
     )
     table.add_column("Field", style="dim", width=20)
     table.add_column("Value", style="bold white")
@@ -62,11 +64,10 @@ def process_single_item(item_id: str) -> None:
     init_db(output_fields)
 
     # Prepare row for DB
-    row_data = (item_id, *[
-        data.get(f, "Not found")
-        for f in output_fields
-        if f != settings.column_name
-    ])
+    row_data = (
+        item_id,
+        *[data.get(f, "Not found") for f in output_fields if f != settings.column_name],
+    )
 
     save_results_bulk([row_data], output_fields)
     console.print(f"\n[bold green]Success![/] [dim]({settings.db_path})[/]")
@@ -77,6 +78,7 @@ def search_item(item_id: str) -> None:
     query = build_search_query(item_id, settings.item_label, output_fields)
     results = WebSearchTool().search(query)
     print(json.dumps([result.to_dict() for result in results], ensure_ascii=False, indent=2))
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="AI Data Collector CLI")
@@ -107,6 +109,7 @@ def main() -> None:
         return
 
     process_single_item(item_id)
+
 
 if __name__ == "__main__":
     main()

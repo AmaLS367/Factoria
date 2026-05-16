@@ -1,25 +1,30 @@
+import os
+import sys
+
+# Add the project root to sys.path so 'backend.*' imports work when run as a script
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 import logging
 
 import pandas as pd
-from backend.agents.research_agent import ResearchAgent, ensure_sources_field
-from backend.config import settings
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
 from tqdm import tqdm
+
+from backend.agents.research_agent import ResearchAgent, ensure_sources_field
+from backend.config import settings
 from backend.utils.db_writer import detail_exists, fetch_all, init_db, save_results_bulk
 
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.FileHandler("collector.log"),
-        logging.StreamHandler()
-    ]
+    handlers=[logging.FileHandler("collector.log"), logging.StreamHandler()],
 )
 logger = logging.getLogger(__name__)
+
 
 def format_output_excel(filepath: str, df: pd.DataFrame | None) -> None:
     if df is None or df.empty:
@@ -80,11 +85,10 @@ def main() -> None:
 
             parsed = agent.collect_item(item_id, output_fields)
 
-            row_data = (item_id, *[
-                parsed.get(f, "Not found")
-                for f in output_fields
-                if f != settings.column_name
-            ])
+            row_data = (
+                item_id,
+                *[parsed.get(f, "Not found") for f in output_fields if f != settings.column_name],
+            )
             buffer.append(row_data)
 
         if buffer:

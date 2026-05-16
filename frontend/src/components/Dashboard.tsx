@@ -19,18 +19,28 @@ export function Dashboard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let mounted = true;
     async function load() {
       try {
         const [h, s] = await Promise.all([fetchHealth(), fetchSettings()]);
-        setHealth(h);
-        setSettings(s);
+        if (mounted) {
+          setHealth(h);
+          setSettings(s);
+        }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unknown error occurred');
+        if (mounted) {
+          setError(err instanceof Error ? err.message : 'Unknown error occurred');
+        }
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     }
     load();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   if (loading) return <div className="p-4 text-neutral-500">Loading dashboard...</div>;

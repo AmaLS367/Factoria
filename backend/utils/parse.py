@@ -4,6 +4,7 @@ import re
 
 logger = logging.getLogger(__name__)
 
+
 def parse_answer(answer: str, fields: list[str]) -> dict[str, str]:
     """
     Parses LLM response as JSON. Falls back to 'Not found' for missing fields.

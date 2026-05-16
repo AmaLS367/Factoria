@@ -3,6 +3,7 @@ import { searchWeb } from '../api';
 import type { SearchResult } from '../types';
 import { Card } from './Card';
 import { Search as SearchIcon, ExternalLink, Loader2 } from 'lucide-react';
+import { isSafeUrl } from '../utils/url';
 
 export function Search() {
   const [query, setQuery] = useState('');
@@ -73,23 +74,32 @@ export function Search() {
             </div>
           ) : (
             <div className="space-y-4">
-              {results.map((result, i) => (
-                <Card key={i}>
-                  <div className="flex flex-col space-y-2">
-                    <a
-                      href={result.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-indigo-600 hover:text-indigo-800 font-medium text-lg flex items-start"
-                    >
-                      {result.title}
-                      <ExternalLink className="w-4 h-4 ml-2 flex-shrink-0 mt-1" />
-                    </a>
-                    <div className="text-xs text-neutral-500 truncate">{result.url}</div>
-                    <p className="text-sm text-neutral-700 leading-relaxed">{result.snippet}</p>
-                  </div>
-                </Card>
-              ))}
+              {results.map((result, i) => {
+                const safeUrl = isSafeUrl(result.url) ? result.url : undefined;
+                return (
+                  <Card key={i}>
+                    <div className="flex flex-col space-y-2">
+                      {safeUrl ? (
+                        <a
+                          href={safeUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-indigo-600 hover:text-indigo-800 font-medium text-lg flex items-start"
+                        >
+                          {result.title}
+                          <ExternalLink className="w-4 h-4 ml-2 flex-shrink-0 mt-1" />
+                        </a>
+                      ) : (
+                        <span className="text-neutral-800 font-medium text-lg flex items-start">
+                          {result.title}
+                        </span>
+                      )}
+                      <div className="text-xs text-neutral-500 truncate">{result.url}</div>
+                      <p className="text-sm text-neutral-700 leading-relaxed">{result.snippet}</p>
+                    </div>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </div>

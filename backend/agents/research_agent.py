@@ -3,7 +3,12 @@ from typing import Protocol
 from backend.clients.llm_client import LLMClient
 from backend.config import settings
 from backend.promts.generator import generate_prompt
-from backend.tools.web_search import SearchResult, WebSearchTool, format_search_context, format_sources
+from backend.tools.web_search import (
+    SearchResult,
+    WebSearchTool,
+    format_search_context,
+    format_sources,
+)
 from backend.utils.parse import parse_answer
 
 SOURCES_FIELD = "Sources"

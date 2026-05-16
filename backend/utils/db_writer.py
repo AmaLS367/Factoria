@@ -3,8 +3,8 @@ import os
 import sqlite3
 
 import pandas as pd
-from backend.config import settings
 
+from backend.config import settings
 from backend.utils.migrations import run_migrations
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,12 @@ def init_db(fields: list[str]) -> None:
                 INSERT INTO runs (input_file, output_file, model_name, web_search_provider)
                 VALUES (?, ?, ?, ?)
                 """,
-                (settings.input_file, settings.output_file, settings.model_name, settings.web_search_provider)  # noqa: E501
+                (
+                    settings.input_file,
+                    settings.output_file,
+                    settings.model_name,
+                    settings.web_search_provider,
+                ),  # noqa: E501
             )
             _CURRENT_RUN_ID = cur.lastrowid
             conn.commit()
@@ -57,6 +62,7 @@ def detail_exists(item_id: str) -> bool:
     conn.close()
     return result is not None
 
+
 def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> None:
     if not data_list:
         return
@@ -72,7 +78,9 @@ def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> No
 
     for row_data in data_list:
         if len(row_data) < len(all_fields):
-            raise ValueError(f"Row data length ({len(row_data)}) is less than fields length ({len(all_fields)}).")  # noqa: E501
+            raise ValueError(
+                f"Row data length ({len(row_data)}) is less than fields length ({len(all_fields)})."
+            )  # noqa: E501
 
     try:
         for row_data in data_list:
@@ -85,7 +93,7 @@ def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> No
                     INSERT INTO items (run_id, identifier_column, identifier_value)
                     VALUES (?, ?, ?)
                     """,
-                    (_CURRENT_RUN_ID, settings.column_name, item_id)
+                    (_CURRENT_RUN_ID, settings.column_name, item_id),
                 )
                 db_item_id = cur.lastrowid
             except sqlite3.IntegrityError:
@@ -109,7 +117,7 @@ def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> No
                                 INSERT INTO item_sources (item_id, title, url, snippet, provider)
                                 VALUES (?, ?, ?, ?, ?)
                                 """,
-                                (db_item_id, "", url, "", "legacy")
+                                (db_item_id, "", url, "", "legacy"),
                             )
                 else:
                     cur.execute(
@@ -117,7 +125,7 @@ def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> No
                         INSERT INTO item_fields (item_id, field_name, field_value)
                         VALUES (?, ?, ?)
                         """,
-                        (db_item_id, field_name, field_value)
+                        (db_item_id, field_name, field_value),
                     )
 
         conn.commit()
@@ -126,6 +134,7 @@ def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> No
         logger.error(f"Error saving to database: {e}")
     finally:
         conn.close()
+
 
 def fetch_all() -> pd.DataFrame | None:
     conn = sqlite3.connect(DB_PATH)
@@ -139,10 +148,14 @@ def fetch_all() -> pd.DataFrame | None:
         items_df = items_df.rename(columns={"identifier_value": settings.column_name})
 
         # Fetch fields
-        fields_df = pd.read_sql_query("SELECT item_id, field_name, field_value FROM item_fields", conn)  # noqa: E501
+        fields_df = pd.read_sql_query(
+            "SELECT item_id, field_name, field_value FROM item_fields", conn
+        )  # noqa: E501
 
         if not fields_df.empty:
-            pivoted = fields_df.pivot(index="item_id", columns="field_name", values="field_value").reset_index()  # noqa: E501
+            pivoted = fields_df.pivot(
+                index="item_id", columns="field_name", values="field_value"
+            ).reset_index()  # noqa: E501
             # Merge items and fields
             merged = items_df.merge(pivoted, left_on="id", right_on="item_id", how="left")
             merged = merged.drop(columns=["item_id"])
@@ -153,7 +166,11 @@ def fetch_all() -> pd.DataFrame | None:
         sources_df = pd.read_sql_query("SELECT item_id, url FROM item_sources", conn)
         if not sources_df.empty:
             # Group by item_id and join URLs with newline
-            sources_grouped = sources_df.groupby("item_id")["url"].apply(lambda urls: "\n".join(dict.fromkeys(urls))).reset_index()  # noqa: E501
+            sources_grouped = (
+                sources_df.groupby("item_id")["url"]
+                .apply(lambda urls: "\n".join(dict.fromkeys(urls)))
+                .reset_index()
+            )  # noqa: E501
             sources_grouped = sources_grouped.rename(columns={"url": SOURCES_FIELD_NAME})
 
             # Merge sources

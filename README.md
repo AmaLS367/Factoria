@@ -11,12 +11,12 @@
 </p>
 
 <p align="center">
-  <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white">
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badgelogo=pythonlogoColor=white">
   <img alt="LLM Providers" src="https://img.shields.io/badge/LLM-OpenAI%20%7C%20Gemini%20%7C%20Ollama-111111?style=for-the-badge">
   <img alt="Web Search" src="https://img.shields.io/badge/Search-Tavily%20%7C%20Brave%20%7C%20DDGS-0F766E?style=for-the-badge">
-  <img alt="SQLite" src="https://img.shields.io/badge/SQLite-Storage-003B57?style=for-the-badge&logo=sqlite&logoColor=white">
-  <img alt="Excel" src="https://img.shields.io/badge/Excel-Import%2FExport-217346?style=for-the-badge&logo=microsoftexcel&logoColor=white">
-  <img alt="FastAPI" src="https://img.shields.io/badge/API-FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white">
+  <img alt="SQLite" src="https://img.shields.io/badge/SQLite-Storage-003B57?style=for-the-badgelogo=sqlitelogoColor=white">
+  <img alt="Excel" src="https://img.shields.io/badge/Excel-Import%2FExport-217346?style=for-the-badgelogo=microsoftexcellogoColor=white">
+  <img alt="FastAPI" src="https://img.shields.io/badge/API-FastAPI-009688?style=for-the-badgelogo=fastapilogoColor=white">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge"></a>
 </p>
 
@@ -262,8 +262,8 @@ Made for turning messy item lists into structured data you can actually use.
 
 ### Backend
 Start the FastAPI backend server:
-`uv run uvicorn backend.api.app:app --host 0.0.0.0 --port 8000 &`
+`uv run uvicorn backend.api.app:app --host 0.0.0.0 --port 8000 `
 
 ### Frontend
 In a separate terminal, start the React frontend:
-`cd frontend && npm install && npm run dev &`
+`cd frontend  npm install  npm run dev `
