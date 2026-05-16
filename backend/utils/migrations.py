@@ -80,14 +80,6 @@ def create_results_table(cur: sqlite3.Cursor, context: MigrationContext) -> None
 
 
 def sync_configured_result_columns(cur: sqlite3.Cursor, context: MigrationContext) -> None:
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS results (
-            id INTEGER PRIMARY KEY AUTOINCREMENT
-        )
-        """
-    )
-
     existing_columns = {
         str(row[1])
         for row in cur.execute("PRAGMA table_info(results)").fetchall()

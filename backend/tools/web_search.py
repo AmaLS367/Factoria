@@ -96,9 +96,11 @@ class DdgsSearchProvider:
 
     def search(self, query: str) -> list[SearchResult]:
         with DDGS(timeout=self.timeout_seconds) as ddgs:
-            raw_results = cast(
-                list[dict[str, object]],
-                ddgs.text(query, region=self.region, max_results=self.max_results),
+            raw_results = list(
+                cast(
+                    list[dict[str, object]],
+                    ddgs.text(query, region=self.region, max_results=self.max_results),
+                )
             )
 
         return [
