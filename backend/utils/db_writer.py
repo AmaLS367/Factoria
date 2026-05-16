@@ -12,11 +12,13 @@ logger = logging.getLogger(__name__)
 DB_PATH = os.path.abspath(settings.db_path)
 
 _CURRENT_RUN_ID: int | None = None
+SOURCES_FIELD_NAME = "Sources"
 
 
 def init_db(fields: list[str]) -> None:
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA foreign_keys = ON")
     try:
         run_migrations(conn, settings.column_name, fields)
         conn.commit()
@@ -42,6 +44,7 @@ def init_db(fields: list[str]) -> None:
 
 def detail_exists(item_id: str) -> bool:
     conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA foreign_keys = ON")
     cur = conn.cursor()
     cur.execute(
         """
@@ -59,10 +62,17 @@ def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> No
         return
 
     conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA foreign_keys = ON")
     cur = conn.cursor()
-    cur.execute("PRAGMA foreign_keys = ON")
+
+    if _CURRENT_RUN_ID is None:
+        raise RuntimeError("save_results_bulk called before init_db; _CURRENT_RUN_ID is not set.")
 
     all_fields = [settings.column_name] + [f for f in fields if f != settings.column_name]
+
+    for row_data in data_list:
+        if len(row_data) < len(all_fields):
+            raise ValueError(f"Row data length ({len(row_data)}) is less than fields length ({len(all_fields)}).")  # noqa: E501
 
     try:
         for row_data in data_list:
@@ -88,20 +98,19 @@ def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> No
                     continue  # Skip item_id itself
 
                 val = row_data[i]
-                if val is None:
-                    continue
-                field_value = str(val)
+                field_value = str(val) if val is not None else None
 
-                if field_name == "Sources":
-                    urls = [u.strip() for u in field_value.split("\n") if u.strip()]
-                    for url in urls:
-                        cur.execute(
-                            """
-                            INSERT INTO item_sources (item_id, title, url, snippet, provider)
-                            VALUES (?, ?, ?, ?, ?)
-                            """,
-                            (db_item_id, "", url, "", "legacy")
-                        )
+                if field_name == SOURCES_FIELD_NAME:
+                    if field_value is not None:
+                        urls = [u.strip() for u in field_value.split("\n") if u.strip()]
+                        for url in urls:
+                            cur.execute(
+                                """
+                                INSERT INTO item_sources (item_id, title, url, snippet, provider)
+                                VALUES (?, ?, ?, ?, ?)
+                                """,
+                                (db_item_id, "", url, "", "legacy")
+                            )
                 else:
                     cur.execute(
                         """
@@ -120,6 +129,7 @@ def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> No
 
 def fetch_all() -> pd.DataFrame | None:
     conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA foreign_keys = ON")
     try:
         # Fetch items
         items_df = pd.read_sql_query("SELECT id, identifier_value FROM items", conn)
@@ -144,17 +154,17 @@ def fetch_all() -> pd.DataFrame | None:
         if not sources_df.empty:
             # Group by item_id and join URLs with newline
             sources_grouped = sources_df.groupby("item_id")["url"].apply(lambda urls: "\n".join(dict.fromkeys(urls))).reset_index()  # noqa: E501
-            sources_grouped = sources_grouped.rename(columns={"url": "Sources"})
+            sources_grouped = sources_grouped.rename(columns={"url": SOURCES_FIELD_NAME})
 
             # Merge sources
             merged = merged.merge(sources_grouped, left_on="id", right_on="item_id", how="left")
             merged = merged.drop(columns=["item_id"])
         else:
-            merged["Sources"] = None
+            merged[SOURCES_FIELD_NAME] = None
 
         # Ensure 'Sources' column exists if there were no sources found at all but we have fields
-        if "Sources" not in merged.columns:
-            merged["Sources"] = None
+        if SOURCES_FIELD_NAME not in merged.columns:
+            merged[SOURCES_FIELD_NAME] = None
 
         merged = merged.drop(columns=["id"])
 
@@ -169,4 +179,3 @@ def fetch_all() -> pd.DataFrame | None:
         return None
     finally:
         conn.close()
-

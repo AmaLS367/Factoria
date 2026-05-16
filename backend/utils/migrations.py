@@ -5,6 +5,8 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+SOURCES_FIELD_NAME = "Sources"
+
 
 @dataclass(frozen=True)
 class MigrationContext:
@@ -125,16 +127,22 @@ def ensure_identifier_index(cur: sqlite3.Cursor, identifier_column: str) -> None
         logger.warning("Could not create unique index for %s: %s", identifier_column, exc)
 
 
-def create_normalized_tables(cur: sqlite3.Cursor, context: MigrationContext) -> None:
-    # Check if 'results' table exists before we do anything
+def rename_legacy_table(cur: sqlite3.Cursor) -> bool:
     table_exists = cur.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='results'"
     ).fetchone() is not None
 
-    if table_exists:
-        cur.execute("ALTER TABLE results RENAME TO legacy_results")
+    legacy_exists = cur.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='legacy_results'"
+    ).fetchone() is not None
 
-    # 1. runs
+    if table_exists and not legacy_exists:
+        cur.execute("ALTER TABLE results RENAME TO legacy_results")
+        return True
+
+    return legacy_exists
+
+def create_runs_table(cur: sqlite3.Cursor) -> None:
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS runs (
@@ -150,7 +158,7 @@ def create_normalized_tables(cur: sqlite3.Cursor, context: MigrationContext) -> 
         """
     )
 
-    # 2. items
+def create_items_table(cur: sqlite3.Cursor) -> None:
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS items (
@@ -169,7 +177,7 @@ def create_normalized_tables(cur: sqlite3.Cursor, context: MigrationContext) -> 
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_items_identifier ON items (identifier_column, identifier_value)"  # noqa: E501
     )
 
-    # 3. item_fields
+def create_item_fields_table(cur: sqlite3.Cursor) -> None:
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS item_fields (
@@ -188,7 +196,7 @@ def create_normalized_tables(cur: sqlite3.Cursor, context: MigrationContext) -> 
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_item_fields_item_id_name ON item_fields (item_id, field_name)"  # noqa: E501
     )
 
-    # 4. item_sources
+def create_item_sources_table(cur: sqlite3.Cursor) -> None:
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS item_sources (
@@ -204,24 +212,34 @@ def create_normalized_tables(cur: sqlite3.Cursor, context: MigrationContext) -> 
         """
     )
 
-    # Migrate data from legacy_results if it existed
-    if table_exists:
+def create_normalized_tables(cur: sqlite3.Cursor, context: MigrationContext) -> None:
+    should_migrate = rename_legacy_table(cur)
+
+    create_runs_table(cur)
+    create_items_table(cur)
+    create_item_fields_table(cur)
+    create_item_sources_table(cur)
+
+    if should_migrate:
         _migrate_legacy_data(cur, context)
 
-
 def _migrate_legacy_data(cur: sqlite3.Cursor, context: MigrationContext) -> None:
-    # 1. Create a dummy run for legacy data
-    cur.execute(
-        """
-        INSERT INTO runs (status, input_file, output_file, model_name, web_search_provider)
-        VALUES ('legacy_migrated', 'legacy', 'legacy', 'legacy', 'legacy')
-        """
-    )
-    run_id = cur.lastrowid
+    # 1. Create or fetch a dummy run for legacy data
+    cur.execute("SELECT id FROM runs WHERE status = 'legacy_migrated'")
+    run_row = cur.fetchone()
+    if run_row:
+        run_id = run_row[0]
+    else:
+        cur.execute(
+            """
+            INSERT INTO runs (status, input_file, output_file, model_name, web_search_provider)
+            VALUES ('legacy_migrated', 'legacy', 'legacy', 'legacy', 'legacy')
+            """
+        )
+        run_id = cur.lastrowid
 
     # Get column names from legacy_results
     columns_info = cur.execute("PRAGMA table_info(legacy_results)").fetchall()
-    # (cid, name, type, notnull, dflt_value, pk)
     columns = [col[1] for col in columns_info]
 
     id_col = context.identifier_column
@@ -241,7 +259,7 @@ def _migrate_legacy_data(cur: sqlite3.Cursor, context: MigrationContext) -> None
         row_dict = dict(zip(columns, row, strict=False))
         identifier_value = row_dict.get(id_col)
 
-        # If the new identifier column doesn't have a value for this legacy row, fallback to the original identifier if possible  # noqa: E501
+        # Fallback to the original identifier if possible
         if identifier_value is None and len(columns) > 1:
             identifier_value = row_dict.get(columns[1])
 
@@ -251,14 +269,21 @@ def _migrate_legacy_data(cur: sqlite3.Cursor, context: MigrationContext) -> None
         identifier_value = str(identifier_value)
 
         # 2. Insert item
-        cur.execute(
-            """
-            INSERT INTO items (run_id, identifier_column, identifier_value)
-            VALUES (?, ?, ?)
-            """,
-            (run_id, context.identifier_column, identifier_value) # Store the proper case column name  # noqa: E501
-        )
-        item_id = cur.lastrowid
+        try:
+            cur.execute(
+                """
+                INSERT INTO items (run_id, identifier_column, identifier_value)
+                VALUES (?, ?, ?)
+                """,
+                (run_id, context.identifier_column, identifier_value)
+            )
+            item_id = cur.lastrowid
+        except sqlite3.IntegrityError:
+            cur.execute(
+                "SELECT id FROM items WHERE identifier_column = ? AND identifier_value = ?",
+                (context.identifier_column, identifier_value)
+            )
+            item_id = cur.fetchone()[0]
 
         # 3. Insert fields and sources
         for field in fields:
@@ -267,26 +292,29 @@ def _migrate_legacy_data(cur: sqlite3.Cursor, context: MigrationContext) -> None
                 continue
             val_str = str(val)
 
-            if field == "Sources":
-                # Split sources by newline
+            if field == SOURCES_FIELD_NAME:
                 urls = [u.strip() for u in val_str.split("\n") if u.strip()]
                 for url in urls:
+                    cur.execute("SELECT 1 FROM item_sources WHERE item_id = ? AND url = ?", (item_id, url))  # noqa: E501
+                    if not cur.fetchone():
+                        cur.execute(
+                            """
+                            INSERT INTO item_sources (item_id, title, url, snippet, provider)
+                            VALUES (?, ?, ?, ?, ?)
+                            """,
+                            (item_id, "", url, "", "legacy")
+                        )
+            else:
+                try:
                     cur.execute(
                         """
-                        INSERT INTO item_sources (item_id, title, url, snippet, provider)
-                        VALUES (?, ?, ?, ?, ?)
+                        INSERT INTO item_fields (item_id, field_name, field_value)
+                        VALUES (?, ?, ?)
                         """,
-                        (item_id, "", url, "", "legacy")
+                        (item_id, field, val_str)
                     )
-            else:
-                cur.execute(
-                    """
-                    INSERT INTO item_fields (item_id, field_name, field_value)
-                    VALUES (?, ?, ?)
-                    """,
-                    (item_id, field, val_str)
-                )
-
+                except sqlite3.IntegrityError:
+                    pass
 
 def quote_identifier(identifier: str) -> str:
     return f'"{identifier.replace(chr(34), chr(34) + chr(34))}"'
