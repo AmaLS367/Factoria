@@ -49,3 +49,29 @@ def test_init_db_adds_missing_columns_to_existing_results_table(
     assert "Part Number" in columns
     assert "Sources" in columns
     assert row == ("ABC-123", "Widget", "https://example.com")
+
+
+def test_init_db_records_applied_schema_migrations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "database.sqlite"
+    monkeypatch.setattr(db_writer, "DB_PATH", str(db_path))
+
+    db_writer.init_db(["Name", "Sources"])
+    db_writer.init_db(["Name", "Sources"])
+
+    conn = sqlite3.connect(db_path)
+    try:
+        migration_rows = conn.execute(
+            "SELECT version, name FROM schema_migrations ORDER BY version"
+        ).fetchall()
+        migration_count = conn.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0]
+    finally:
+        conn.close()
+
+    assert migration_rows == [
+        (1, "create_results_table"),
+        (2, "sync_configured_result_columns"),
+    ]
+    assert migration_count == 2
