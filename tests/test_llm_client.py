@@ -2,12 +2,11 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import requests
+from clients.llm_client import GeminiProvider, LLMClient
 
-from backend.clients.llm_client import GeminiProvider, LLMClient
 
-
-@patch("backend.clients.llm_client.settings")
-@patch("backend.clients.llm_client.OpenAI")
+@patch("clients.llm_client.settings")
+@patch("clients.llm_client.OpenAI")
 def test_openai_compatible_provider(mock_openai: Any, mock_settings: Any) -> None:
     # Setup mocks
     mock_settings.resolved_llm_provider = "openai-compatible"
@@ -41,8 +40,8 @@ def test_openai_compatible_provider(mock_openai: Any, mock_settings: Any) -> Non
     )
 
 
-@patch("backend.clients.llm_client.settings")
-@patch("backend.clients.llm_client.OpenAI")
+@patch("clients.llm_client.settings")
+@patch("clients.llm_client.OpenAI")
 def test_openai_compatible_provider_error(mock_openai: Any, mock_settings: Any) -> None:
     mock_settings.resolved_llm_provider = "openai-compatible"
     mock_settings.resolved_llm_api_key = "test_key"
@@ -60,8 +59,8 @@ def test_openai_compatible_provider_error(mock_openai: Any, mock_settings: Any) 
     assert answer == ""
 
 
-@patch("backend.clients.llm_client.settings")
-@patch("backend.clients.llm_client.requests")
+@patch("clients.llm_client.settings")
+@patch("clients.llm_client.requests")
 def test_gemini_provider(mock_requests: Any, mock_settings: Any) -> None:
     mock_settings.resolved_llm_provider = "gemini"
     mock_settings.resolved_llm_api_key = "test_key"
@@ -92,13 +91,13 @@ def test_gemini_provider(mock_requests: Any, mock_settings: Any) -> None:
         args[0]
         == "https://generativelanguage.googleapis.com/v1beta/models/gemini-model:generateContent?key=test_key"
     )
-    assert kwargs["json"]["system_instruction"]["parts"]["text"] == "system"
+    assert kwargs["json"]["system_instruction"]["parts"][0]["text"] == "system"
     assert kwargs["json"]["contents"][0]["parts"][0]["text"] == "user prompt"
     assert kwargs["timeout"] == 60
 
 
-@patch("backend.clients.llm_client.settings")
-@patch("backend.clients.llm_client.requests")
+@patch("clients.llm_client.settings")
+@patch("clients.llm_client.requests")
 def test_gemini_provider_error(mock_requests: Any, mock_settings: Any) -> None:
     mock_settings.resolved_llm_provider = "gemini"
     mock_settings.resolved_llm_api_key = "test_key"
@@ -114,8 +113,8 @@ def test_gemini_provider_error(mock_requests: Any, mock_settings: Any) -> None:
     assert answer == ""
 
 
-@patch("backend.clients.llm_client.settings")
-@patch("backend.clients.llm_client.requests")
+@patch("clients.llm_client.settings")
+@patch("clients.llm_client.requests")
 def test_ollama_provider(mock_requests: Any, mock_settings: Any) -> None:
     mock_settings.resolved_llm_provider = "ollama"
     mock_settings.resolved_llm_api_key = ""
@@ -144,8 +143,8 @@ def test_ollama_provider(mock_requests: Any, mock_settings: Any) -> None:
     assert kwargs["timeout"] == 60
 
 
-@patch("backend.clients.llm_client.settings")
-@patch("backend.clients.llm_client.requests")
+@patch("clients.llm_client.settings")
+@patch("clients.llm_client.requests")
 def test_ollama_provider_error(mock_requests: Any, mock_settings: Any) -> None:
     mock_settings.resolved_llm_provider = "ollama"
     mock_settings.resolved_llm_api_key = ""

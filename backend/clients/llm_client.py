@@ -54,7 +54,7 @@ class GeminiProvider(BaseLLMProvider):
         url = f"{self.base_url.rstrip('/')}/{self.model_name}:generateContent?key={self.api_key}"
 
         payload: dict[str, Any] = {
-            "system_instruction": {"parts": {"text": settings.system_prompt}},
+            "system_instruction": {"parts": [{"text": settings.system_prompt}]},
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"temperature": 0.1},
         }

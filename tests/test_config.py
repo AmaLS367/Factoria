@@ -1,4 +1,4 @@
-from backend.config import Settings
+from config import Settings
 
 
 def test_config_fallback_to_openai_defaults() -> None:
