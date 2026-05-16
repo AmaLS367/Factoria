@@ -1,5 +1,5 @@
 [project]
-name = "parts-info-collector"
+name = "factoria"
 version = "0.1.0"
 description = "Automation toolkit for mass collection of spare-part specs using AI. Reads part numbers from Excel, sends structured prompts, parses responses into SQLite and exports a formatted Excel report. Resilient to restarts and tuned for tens of thousands of rows."
 authors = [
@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/AmaLS367/parts_info_collector"
+Repository = "https://github.com/AmaLS367/Factoria"
 
 [tool.uv]
 managed = true
