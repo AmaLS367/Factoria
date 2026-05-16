@@ -48,13 +48,7 @@ class GeminiProvider(BaseLLMProvider):
     def __init__(self) -> None:
         self.api_key = settings.resolved_llm_api_key
         self.model_name = settings.resolved_llm_model
-        # Gemini base url can be customized, but usually it's standard
-        # If user provided a base url, use it, else use standard Google format
-        base_url = settings.resolved_llm_base_url
-        if base_url and "api.deepseek.com" not in base_url and "openai" not in base_url.lower():
-            self.base_url = base_url
-        else:
-            self.base_url = "https://generativelanguage.googleapis.com/v1beta/models"
+        self.base_url = settings.resolved_llm_base_url
 
     def get_answer(self, prompt: str) -> str:
         url = f"{self.base_url.rstrip('/')}/{self.model_name}:generateContent?key={self.api_key}"
@@ -135,15 +129,15 @@ class LLMClient:
     provider: BaseLLMProvider
 
     def __init__(self) -> None:
-        provider_name = settings.resolved_llm_provider.lower()
+        provider_name = settings.resolved_llm_provider
 
-        if provider_name == "gemini":
-            self.provider = GeminiProvider()
-        elif provider_name == "ollama":
-            self.provider = OllamaProvider()
-        else:
-            # Default to openai-compatible
-            self.provider = OpenAICompatibleProvider()
+        provider_map: dict[str, type[BaseLLMProvider]] = {
+            "gemini": GeminiProvider,
+            "ollama": OllamaProvider,
+        }
+
+        provider_class = provider_map.get(provider_name, OpenAICompatibleProvider)
+        self.provider = provider_class()
 
     def get_answer(self, prompt: str) -> str:
         """

@@ -16,7 +16,8 @@ class Settings(BaseSettings):
 
     @property
     def resolved_llm_provider(self) -> str:
-        return self.llm_provider if self.llm_provider else "openai-compatible"
+        provider = self.llm_provider if self.llm_provider else "openai-compatible"
+        return provider.lower()
 
     @property
     def resolved_llm_api_key(self) -> str:
@@ -26,8 +27,11 @@ class Settings(BaseSettings):
     def resolved_llm_base_url(self) -> str:
         if self.llm_base_url:
             return self.llm_base_url
-        if self.resolved_llm_provider == "ollama":
+        provider = self.resolved_llm_provider
+        if provider == "ollama":
             return "http://localhost:11434"
+        if provider == "gemini":
+            return "https://generativelanguage.googleapis.com/v1beta/models"
         return self.openai_base_url
 
     @property

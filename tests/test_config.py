@@ -35,3 +35,16 @@ def test_config_ollama_default_url() -> None:
 
     assert settings.resolved_llm_provider == "ollama"
     assert settings.resolved_llm_base_url == "http://localhost:11434"
+
+
+def test_config_gemini_uses_default_url() -> None:
+    settings = Settings(llm_provider="gemini", openai_base_url="old_url")
+    assert (
+        settings.resolved_llm_base_url == "https://generativelanguage.googleapis.com/v1beta/models"
+    )
+
+
+def test_config_provider_normalized_lowercase() -> None:
+    settings = Settings(llm_provider="Ollama")
+    assert settings.resolved_llm_provider == "ollama"
+    assert settings.resolved_llm_base_url == "http://localhost:11434"

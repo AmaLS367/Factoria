@@ -65,7 +65,7 @@ def test_openai_compatible_provider_error(mock_openai: Any, mock_settings: Any) 
 def test_gemini_provider(mock_requests: Any, mock_settings: Any) -> None:
     mock_settings.resolved_llm_provider = "gemini"
     mock_settings.resolved_llm_api_key = "test_key"
-    mock_settings.resolved_llm_base_url = ""
+    mock_settings.resolved_llm_base_url = "https://generativelanguage.googleapis.com/v1beta/models"
     mock_settings.resolved_llm_model = "gemini-model"
     mock_settings.resolved_llm_timeout_seconds = 60
     mock_settings.system_prompt = "system"
@@ -102,7 +102,7 @@ def test_gemini_provider(mock_requests: Any, mock_settings: Any) -> None:
 def test_gemini_provider_error(mock_requests: Any, mock_settings: Any) -> None:
     mock_settings.resolved_llm_provider = "gemini"
     mock_settings.resolved_llm_api_key = "test_key"
-    mock_settings.resolved_llm_base_url = ""
+    mock_settings.resolved_llm_base_url = "https://generativelanguage.googleapis.com/v1beta/models"
     mock_settings.resolved_llm_model = "gemini-model"
     mock_settings.resolved_llm_timeout_seconds = 60
     mock_settings.system_prompt = "system"
