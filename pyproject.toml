@@ -17,6 +17,8 @@ dependencies = [
     "rich>=15.0.0",
     "requests>=2.34.2",
     "ddgs>=9.14.4",
+    "fastapi>=0.136.1",
+    "uvicorn>=0.47.0",
 ]
 
 [project.urls]
