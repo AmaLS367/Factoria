@@ -15,6 +15,8 @@ dependencies = [
     "tqdm>=4.66.0",
     "pydantic-settings>=2.2.0",
     "rich>=15.0.0",
+    "requests>=2.34.2",
+    "ddgs>=9.14.4",
 ]
 
 [project.urls]
@@ -26,6 +28,7 @@ managed = true
 [dependency-groups]
 dev = [
     "mypy>=2.1.0",
+    "pytest>=9.0.3",
     "ruff>=0.15.13",
 ]
 
