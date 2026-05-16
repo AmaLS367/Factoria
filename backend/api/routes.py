@@ -1,17 +1,20 @@
+import logging
 import os
 import sqlite3
 from typing import Any
 
-from agents.research_agent import ResearchAgent, ensure_sources_field
-from config import settings
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
-from main import main as run_excel_job
 from pydantic import BaseModel
-from tools.web_search import WebSearchTool
-from utils.db_writer import DB_PATH, fetch_all, init_db, save_results_bulk
+
+from backend.agents.research_agent import ResearchAgent, ensure_sources_field
+from backend.config import settings
+from backend.main import main as run_excel_job
+from backend.tools.web_search import WebSearchTool
+from backend.utils.db_writer import DB_PATH, fetch_all, init_db, save_results_bulk
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class SearchRequest(BaseModel):
@@ -33,7 +36,8 @@ def health() -> dict[str, Any]:
         else:
             db_status = "not_initialized"
     except Exception as e:
-        db_status = f"error: {e}"
+        logger.error(f"DB Health check failed: {e}")
+        db_status = "error"
 
     return {
         "status": "ok",
@@ -74,7 +78,8 @@ def collect_item(request: CollectRequest) -> dict[str, Any]:
     try:
         data = agent.collect_item(item_id, output_fields)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        logger.error(f"Item collection failed: {e}")
+        raise HTTPException(status_code=500, detail="Item collection failed") from e
 
     # Initialize DB in case it wasn't
     init_db(output_fields)
@@ -88,7 +93,8 @@ def collect_item(request: CollectRequest) -> dict[str, Any]:
     try:
         save_results_bulk([row_data], output_fields)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}") from e
+        logger.error(f"Database error: {e}")
+        raise HTTPException(status_code=500, detail="Database error") from e
 
     return data
 
@@ -96,19 +102,37 @@ def collect_item(request: CollectRequest) -> dict[str, Any]:
 @router.post("/jobs/excel")
 def start_excel_job() -> dict[str, str]:
     try:
+        prev_mtime = 0.0
+        if os.path.exists(settings.output_file):
+            prev_mtime = os.path.getmtime(settings.output_file)
+
         run_excel_job()
+
+        if not os.path.exists(settings.output_file) \
+                or os.path.getmtime(settings.output_file) <= prev_mtime:
+            raise Exception("Excel workflow did not produce or update the expected output file.")
+
         return {"status": "completed", "output_path": settings.output_file}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Excel job failed: {str(e)}") from e
+        logger.error(f"Excel job failed: {e}")
+        raise HTTPException(status_code=500, detail="Excel job failed") from e
 
 
 @router.get("/items")
-def list_items() -> list[dict[str, Any]]:
+def list_items(limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
+    if limit < 1 or limit > 1000:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 1000")
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="offset must be >= 0")
+
+    if not os.path.exists(DB_PATH):
+        return []
     df = fetch_all()
     if df is None or df.empty:
         return []
     # Replace NaN with None
     records = df.where(df.notna(), None).to_dict(orient="records")
+    records = records[offset:offset+limit]
     return [dict(r) for r in records]
 
 

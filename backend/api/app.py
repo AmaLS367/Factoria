@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from api.routes import router
+from backend.api.routes import router
 
 app = FastAPI(title="AI Data Collector API")
 
