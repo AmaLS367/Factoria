@@ -1,10 +1,10 @@
 from typing import Protocol
 
-from clients.llm_client import LLMClient
-from config import settings
-from promts.generator import generate_prompt
-from tools.web_search import SearchResult, WebSearchTool, format_search_context, format_sources
-from utils.parse import parse_answer
+from backend.clients.llm_client import LLMClient
+from backend.config import settings
+from backend.promts.generator import generate_prompt
+from backend.tools.web_search import SearchResult, WebSearchTool, format_search_context, format_sources
+from backend.utils.parse import parse_answer
 
 SOURCES_FIELD = "Sources"
 

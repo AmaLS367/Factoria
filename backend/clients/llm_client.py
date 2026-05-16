@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Any, cast
 
 import requests
-from config import settings
+from backend.config import settings
 from openai import OpenAI
 from requests.exceptions import RequestException
 

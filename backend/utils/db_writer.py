@@ -3,9 +3,9 @@ import os
 import sqlite3
 
 import pandas as pd
-from config import settings
+from backend.config import settings
 
-from utils.migrations import run_migrations
+from backend.utils.migrations import run_migrations
 
 logger = logging.getLogger(__name__)
 

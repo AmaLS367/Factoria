@@ -1,16 +1,16 @@
 import argparse
 import json
 
-from agents.research_agent import ResearchAgent, build_search_query, ensure_sources_field
-from clients.llm_client import LLMClient
-from config import settings
+from backend.agents.research_agent import ResearchAgent, build_search_query, ensure_sources_field
+from backend.clients.llm_client import LLMClient
+from backend.config import settings
 from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.table import Table
-from tools.web_search import WebSearchTool
-from utils.db_writer import init_db, save_results_bulk
+from backend.tools.web_search import WebSearchTool
+from backend.utils.db_writer import init_db, save_results_bulk
 
 # Force UTF-8 for Windows if needed, but rich usually handles it
 console = Console()

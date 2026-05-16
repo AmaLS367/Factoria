@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Protocol, cast
 
 import requests
-from config import settings
+from backend.config import settings
 from ddgs import DDGS
 
 logger = logging.getLogger(__name__)

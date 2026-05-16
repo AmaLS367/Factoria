@@ -257,3 +257,13 @@ Factoria/
 ---
 
 Made for turning messy item lists into structured data you can actually use.
+
+## Running the Application
+
+### Backend
+Start the FastAPI backend server:
+`uv run uvicorn backend.api.app:app --host 0.0.0.0 --port 8000 &`
+
+### Frontend
+In a separate terminal, start the React frontend:
+`cd frontend && npm install && npm run dev &`

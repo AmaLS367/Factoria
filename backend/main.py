@@ -1,14 +1,14 @@
 import logging
 
 import pandas as pd
-from agents.research_agent import ResearchAgent, ensure_sources_field
-from config import settings
+from backend.agents.research_agent import ResearchAgent, ensure_sources_field
+from backend.config import settings
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
 from tqdm import tqdm
-from utils.db_writer import detail_exists, fetch_all, init_db, save_results_bulk
+from backend.utils.db_writer import detail_exists, fetch_all, init_db, save_results_bulk
 
 # Setup logging
 logging.basicConfig(
