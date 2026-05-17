@@ -1,11 +1,17 @@
 import { useRef, useState, useEffect } from 'react';
-import { runExcelJob, fetchJob, fetchJobs, getJobExportUrl } from '../api';
-import type { Job } from '../types';
+import { runExcelJob, fetchJob, fetchJobs, getJobExportUrl, previewFile, cancelJob, retryJob } from '../api';
+import type { Job, PreviewResult } from '../types';
 import { Card } from './Card';
-import { Play, Download, Loader2, Upload, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { Play, Download, Loader2, Upload, AlertCircle, CheckCircle, Clock, XCircle, RefreshCw, ChevronDown } from 'lucide-react';
+
+type Step = 'idle' | 'previewing' | 'configuring' | 'running';
 
 export function ExcelJob() {
+  const [step, setStep] = useState<Step>('idle');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<PreviewResult | null>(null);
+  const [selectedSheet, setSelectedSheet] = useState<string>('');
+  const [selectedColumn, setSelectedColumn] = useState<string>('');
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [activeJob, setActiveJob] = useState<Job | null>(null);
   const [recentJobs, setRecentJobs] = useState<Job[]>([]);
@@ -18,12 +24,12 @@ export function ExcelJob() {
 
   useEffect(() => {
     let intervalId: number;
-    if (activeJobId && activeJob?.status !== 'completed' && activeJob?.status !== 'failed') {
+    if (activeJobId && activeJob?.status !== 'completed' && activeJob?.status !== 'failed' && activeJob?.status !== 'cancelled') {
       intervalId = window.setInterval(async () => {
         try {
           const job = await fetchJob(activeJobId);
           setActiveJob(job);
-          if (job.status === 'completed' || job.status === 'failed') {
+          if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
             loadRecentJobs();
           }
         } catch (err) {
@@ -43,27 +49,90 @@ export function ExcelJob() {
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] ?? null;
+    if (!file) return;
     setSelectedFile(file);
     setError(null);
+    setPreview(null);
+    setStep('previewing');
+    try {
+      const result: PreviewResult = await previewFile(file);
+      setPreview(result);
+      setSelectedSheet(result.sheets[0] ?? '');
+      setSelectedColumn(result.columns[0] ?? '');
+      setStep('configuring');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStep('idle');
+    }
+  };
+
+  const handleSheetChange = async (sheet: string) => {
+    if (!selectedFile || !preview || preview.file_type === 'csv') return;
+    setSelectedSheet(sheet);
+    try {
+      const result: PreviewResult = await previewFile(selectedFile, sheet);
+      setPreview(result);
+      setSelectedColumn(result.columns[0] ?? '');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handleRunJob = async () => {
     if (!selectedFile) {
-      setError('Please select an Excel file first.');
+      setError('Please select a file first.');
       return;
     }
     setError(null);
+    setStep('running');
     try {
-      const data = await runExcelJob(selectedFile);
+      const data = await runExcelJob(selectedFile, selectedSheet || undefined, selectedColumn || undefined);
       setActiveJobId(data.job_id);
       const job = await fetchJob(data.job_id);
       setActiveJob(job);
       loadRecentJobs();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
+      setStep('configuring');
     }
+  };
+
+  const handleCancel = async () => {
+    if (!activeJobId) return;
+    try {
+      await cancelJob(activeJobId);
+      const job = await fetchJob(activeJobId);
+      setActiveJob(job);
+      loadRecentJobs();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleRetry = async () => {
+    if (!activeJobId) return;
+    try {
+      const data = await retryJob(activeJobId);
+      setActiveJobId(data.job_id);
+      const job = await fetchJob(data.job_id);
+      setActiveJob(job);
+      setStep('running');
+      loadRecentJobs();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleNewFile = () => {
+    setStep('idle');
+    setSelectedFile(null);
+    setPreview(null);
+    setSelectedSheet('');
+    setSelectedColumn('');
+    setError(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const renderProgressBar = (job: Job) => {
@@ -95,50 +164,165 @@ export function ExcelJob() {
     switch (status) {
       case 'completed': return <CheckCircle className="h-5 w-5 text-green-500" />;
       case 'failed': return <AlertCircle className="h-5 w-5 text-red-500" />;
+      case 'cancelled': return <XCircle className="h-5 w-5 text-neutral-500" />;
       case 'running': return <Loader2 className="h-5 w-5 text-indigo-500 animate-spin" />;
       default: return <Clock className="h-5 w-5 text-neutral-500" />;
     }
   };
 
+  const isJobActive = activeJob?.status === 'running' || activeJob?.status === 'queued';
+  const isJobTerminal = activeJob?.status === 'completed' || activeJob?.status === 'failed' || activeJob?.status === 'cancelled';
+
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
-      <Card title="Batch Excel Job">
+      <Card title="Batch Excel / CSV Job">
         <div className="space-y-4">
           <p className="text-sm text-neutral-600 dark:text-neutral-300">
-            Upload an Excel file to process all items using the research agent.
-            Results will be processed in the background.
+            Upload an Excel (.xlsx) or CSV file to process all items using the research agent.
           </p>
 
+          {/* Step 1 — File picker */}
           <div
             className="flex items-center gap-3 p-3 border border-dashed border-neutral-300 dark:border-neutral-600 rounded-md bg-neutral-50 dark:bg-neutral-800 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => step !== 'running' && fileInputRef.current?.click()}
           >
-            <Upload className="h-5 w-5 text-neutral-400 dark:text-neutral-500 shrink-0" />
+            {step === 'previewing' ? (
+              <Loader2 className="h-5 w-5 text-indigo-500 animate-spin shrink-0" />
+            ) : (
+              <Upload className="h-5 w-5 text-neutral-400 dark:text-neutral-500 shrink-0" />
+            )}
             <span className="text-sm text-neutral-600 dark:text-neutral-300 truncate">
-              {selectedFile ? selectedFile.name : 'Click to select an .xlsx file'}
+              {selectedFile ? selectedFile.name : 'Click to select an .xlsx or .csv file'}
             </span>
             <input
               ref={fileInputRef}
               type="file"
-              accept=".xlsx"
+              accept=".xlsx,.xls,.csv"
               className="hidden"
               onChange={handleFileChange}
             />
           </div>
 
-          <div className="flex space-x-3">
-            <button
-              onClick={handleRunJob}
-              disabled={!selectedFile || activeJob?.status === 'running' || activeJob?.status === 'queued'}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {(activeJob?.status === 'running' || activeJob?.status === 'queued') ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
+          {/* Step 2 — Preview / Configure */}
+          {(step === 'configuring' || step === 'running') && preview && (
+            <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg overflow-hidden">
+              <div className="px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700 flex items-center justify-between">
+                <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                  {preview.row_count} rows · {preview.columns.length} columns
+                </span>
+                {step === 'configuring' && (
+                  <button onClick={handleNewFile} className="text-xs text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300">
+                    Change file
+                  </button>
+                )}
+              </div>
+
+              <div className="p-4 space-y-3">
+                {/* Sheet selector (xlsx only) */}
+                {preview.file_type === 'xlsx' && preview.sheets.length > 1 && (
+                  <div className="flex items-center gap-3">
+                    <label className="text-xs font-medium text-neutral-600 dark:text-neutral-400 w-24 shrink-0">Sheet</label>
+                    <div className="relative flex-1">
+                      <select
+                        value={selectedSheet}
+                        onChange={(e) => handleSheetChange(e.target.value)}
+                        disabled={step === 'running'}
+                        className="w-full appearance-none bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-600 rounded px-3 py-1.5 text-sm text-neutral-800 dark:text-neutral-200 pr-8 disabled:opacity-60"
+                      >
+                        {preview.sheets.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                      <ChevronDown className="absolute right-2 top-2 h-4 w-4 text-neutral-400 pointer-events-none" />
+                    </div>
+                  </div>
+                )}
+
+                {/* Column selector */}
+                <div className="flex items-center gap-3">
+                  <label className="text-xs font-medium text-neutral-600 dark:text-neutral-400 w-24 shrink-0">ID Column</label>
+                  <div className="relative flex-1">
+                    <select
+                      value={selectedColumn}
+                      onChange={(e) => setSelectedColumn(e.target.value)}
+                      disabled={step === 'running'}
+                      className="w-full appearance-none bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-600 rounded px-3 py-1.5 text-sm text-neutral-800 dark:text-neutral-200 pr-8 disabled:opacity-60"
+                    >
+                      {preview.columns.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-2 h-4 w-4 text-neutral-400 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* Sample table */}
+                {preview.sample_rows.length > 0 && (
+                  <div className="overflow-x-auto rounded border border-neutral-200 dark:border-neutral-700 mt-1">
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-neutral-100 dark:bg-neutral-800">
+                        <tr>
+                          {preview.columns.map(c => (
+                            <th key={c} className="px-3 py-1.5 text-left font-medium text-neutral-600 dark:text-neutral-400 whitespace-nowrap">{c}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-neutral-200 dark:divide-neutral-700">
+                        {preview.sample_rows.map((row, i) => (
+                          <tr key={i} className="bg-white dark:bg-neutral-900">
+                            {preview.columns.map(c => (
+                              <td key={c} className="px-3 py-1.5 text-neutral-700 dark:text-neutral-300 whitespace-nowrap max-w-[160px] truncate">
+                                {row[c] == null ? <span className="text-neutral-400 italic">null</span> : String(row[c])}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Step 3 — Run / Cancel / Retry buttons */}
+          <div className="flex gap-3 flex-wrap">
+            {(step === 'configuring' || (step === 'running' && isJobTerminal)) && (
+              <button
+                onClick={handleRunJob}
+                disabled={!selectedFile || isJobActive}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 <Play className="h-4 w-4 mr-2 fill-current" />
-              )}
-              {(activeJob?.status === 'running' || activeJob?.status === 'queued') ? 'Processing...' : 'Run Excel Job'}
-            </button>
+                Run Job
+              </button>
+            )}
+
+            {step === 'running' && isJobActive && (
+              <button
+                onClick={handleCancel}
+                className="inline-flex items-center px-4 py-2 border border-neutral-300 dark:border-neutral-600 text-sm font-medium rounded-md text-neutral-700 dark:text-neutral-300 bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700"
+              >
+                <XCircle className="h-4 w-4 mr-2" />
+                Cancel
+              </button>
+            )}
+
+            {step === 'running' && (activeJob?.status === 'failed' || activeJob?.status === 'cancelled') && (
+              <button
+                onClick={handleRetry}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Retry
+              </button>
+            )}
+
+            {step === 'idle' && (
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                Select File
+              </button>
+            )}
           </div>
         </div>
 
@@ -148,7 +332,7 @@ export function ExcelJob() {
           </div>
         )}
 
-        {activeJob && (
+        {activeJob && step === 'running' && (
           <div className="mt-6 p-4 border border-neutral-200 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-800">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
@@ -189,21 +373,43 @@ export function ExcelJob() {
                       {new Date(job.created_at).toLocaleString()}
                     </p>
                     <p className="text-xs text-neutral-500">
-                      {job.processed_items + job.skipped_items + job.failed_items} / {job.total_items} items processed
+                      {job.processed_items + job.skipped_items + job.failed_items} / {job.total_items} items · {job.status}
                     </p>
                   </div>
                 </div>
-                {job.status === 'completed' && (
-                  <a
-                    href={getJobExportUrl(job.job_id)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-2 text-neutral-500 hover:text-indigo-600 transition-colors"
-                    title="Download"
-                  >
-                    <Download className="h-4 w-4" />
-                  </a>
-                )}
+                <div className="flex items-center gap-1">
+                  {(job.status === 'failed' || job.status === 'cancelled') && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          const data = await retryJob(job.job_id);
+                          setActiveJobId(data.job_id);
+                          const newJob = await fetchJob(data.job_id);
+                          setActiveJob(newJob);
+                          setStep('running');
+                          loadRecentJobs();
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : String(err));
+                        }
+                      }}
+                      className="p-2 text-neutral-500 hover:text-indigo-600 transition-colors"
+                      title="Retry"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                    </button>
+                  )}
+                  {job.status === 'completed' && (
+                    <a
+                      href={getJobExportUrl(job.job_id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-2 text-neutral-500 hover:text-indigo-600 transition-colors"
+                      title="Download"
+                    >
+                      <Download className="h-4 w-4" />
+                    </a>
+                  )}
+                </div>
               </div>
             ))}
           </div>

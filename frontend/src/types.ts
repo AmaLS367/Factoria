@@ -30,7 +30,7 @@ export interface ExcelJobStatus {
 
 export interface Job {
   job_id: string;
-  status: 'queued' | 'running' | 'completed' | 'failed';
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
   created_at: string;
   started_at?: string;
   finished_at?: string;
@@ -42,4 +42,14 @@ export interface Job {
   input_file: string;
   output_file: string;
   run_id?: number;
+  sheet_name?: string;
+  column_name?: string;
+}
+
+export interface PreviewResult {
+  file_type: 'xlsx' | 'csv';
+  sheets: string[];
+  columns: string[];
+  row_count: number;
+  sample_rows: Record<string, unknown>[];
 }
