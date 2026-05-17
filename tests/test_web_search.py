@@ -148,9 +148,7 @@ def test_ddgs_provider_normalizes_results(monkeypatch: pytest.MonkeyPatch) -> No
 
     results = web_search.DdgsSearchProvider(5, 10, "wt-wt").search("part")
 
-    assert results == [
-        SearchResult(title="DDGS", url="https://example.com/ddgs", snippet="Body")
-    ]
+    assert results == [SearchResult(title="DDGS", url="https://example.com/ddgs", snippet="Body")]
 
 
 def test_prompt_includes_web_context_and_sources_field() -> None:
