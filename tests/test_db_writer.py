@@ -133,8 +133,9 @@ def test_init_db_records_applied_schema_migrations(mock_db_writer: Path) -> None
         (2, "sync_configured_result_columns"),
         (3, "create_normalized_tables"),
         (4, "create_jobs_table"),
+        (5, "create_cache_table"),
     ]
-    assert migration_count == 4
+    assert migration_count == len(migration_rows)
 
 
 def test_save_results_bulk_idempotency(mock_db_writer: Path) -> None:

@@ -351,6 +351,25 @@ def create_jobs_table(cur: sqlite3.Cursor, context: MigrationContext) -> None:
     )
 
 
+def create_cache_table(cur: sqlite3.Cursor, context: MigrationContext) -> None:
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS cache_entries (
+            cache_key TEXT PRIMARY KEY,
+            kind TEXT NOT NULL,
+            provider TEXT,
+            model TEXT,
+            payload_json TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at TEXT
+        )
+        """
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cache_kind_expires_at ON cache_entries (kind, expires_at)"
+    )
+
+
 def quote_identifier(identifier: str) -> str:
     return f'"{identifier.replace(chr(34), chr(34) + chr(34))}"'
 
@@ -360,4 +379,5 @@ MIGRATIONS = [
     Migration(2, "sync_configured_result_columns", sync_configured_result_columns),
     Migration(3, "create_normalized_tables", create_normalized_tables),
     Migration(4, "create_jobs_table", create_jobs_table),
+    Migration(5, "create_cache_table", create_cache_table),
 ]

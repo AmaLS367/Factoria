@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     def resolved_llm_timeout_seconds(self) -> int:
         return self.llm_timeout_seconds
 
+    # Cache Settings
+    cache_enabled: bool = True
+    cache_web_search_enabled: bool = True
+    cache_llm_enabled: bool = True
+    cache_web_search_ttl_days: int = 14
+    cache_llm_ttl_days: int = 60
+
     # Web Search Settings
     web_search_enabled: bool = True
     web_search_provider: str = "tavily"

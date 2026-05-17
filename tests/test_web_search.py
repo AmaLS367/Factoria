@@ -181,7 +181,9 @@ def test_cli_search_mode_outputs_json(
     assert output == [{"title": "Title", "url": "https://example.com", "snippet": "Text"}]
 
 
-def test_research_agent_searches_before_llm() -> None:
+def test_research_agent_searches_before_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("backend.agents.research_agent.settings.cache_enabled", False)
+    monkeypatch.setattr("backend.agents.research_agent.settings.cache_llm_enabled", False)
     llm_client = FakeLlmClient()
     search_tool = FakeSearchTool()
 
@@ -199,6 +201,9 @@ def test_research_agent_searches_before_llm() -> None:
 def test_failed_search_does_not_block_collection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr("backend.agents.research_agent.settings.cache_enabled", False)
+    monkeypatch.setattr("backend.agents.research_agent.settings.cache_llm_enabled", False)
+
     def failing_search(self: web_search.DdgsSearchProvider, query: str) -> list[SearchResult]:
         raise TimeoutError("network timeout")
 

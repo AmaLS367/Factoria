@@ -7,6 +7,7 @@ import requests
 from ddgs import DDGS
 
 from backend.config import settings
+from backend.utils.cache import get_cache, make_cache_key, set_cache
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +141,38 @@ class WebSearchTool:
             return []
 
         try:
-            return self._provider().search(query)
+            if not settings.cache_enabled or not settings.cache_web_search_enabled:
+                return self._provider().search(query)
+
+            provider_instance = self._provider()
+            provider_name = provider_instance.__class__.__name__
+            payload = {
+                "query": query,
+                "region": self.region,
+                "max_results": self.max_results,
+            }
+            cache_key = make_cache_key("web_search", provider_name, "N/A", payload)
+
+            cached_results = get_cache(cache_key)
+            if cached_results is not None:
+                logger.info(f"Web search cache hit for query: {query}")
+                return [SearchResult(**cast(dict[str, str], r)) for r in cached_results]
+
+            logger.info(f"Web search cache miss for query: {query}")
+            results = provider_instance.search(query)
+
+            if results:
+                results_dict = [r.to_dict() for r in results]
+                set_cache(
+                    cache_key=cache_key,
+                    kind="web_search",
+                    provider=provider_name,
+                    model="N/A",
+                    payload=results_dict,
+                    ttl_days=settings.cache_web_search_ttl_days,
+                )
+
+            return results
         except Exception as exc:
             logger.warning("Web search failed for query %r: %s", query, exc)
             return []
