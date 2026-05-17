@@ -8,6 +8,7 @@ from ddgs import DDGS
 
 from backend.config import settings
 from backend.utils.cache import get_cache, make_cache_key, set_cache
+from backend.utils.retry import with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -42,19 +43,29 @@ class ApiSearchProvider(ABC):
 
 class TavilySearchProvider(ApiSearchProvider):
     def search(self, query: str) -> list[SearchResult]:
-        response = requests.post(
-            "https://api.tavily.com/search",
-            headers={"Authorization": f"Bearer {self.api_key}"},
-            json={
-                "query": query,
-                "search_depth": "basic",
-                "include_answer": False,
-                "include_raw_content": False,
-                "max_results": self.max_results,
-            },
-            timeout=self.timeout_seconds,
+        def _call_api() -> requests.Response:
+            res = requests.post(
+                "https://api.tavily.com/search",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json={
+                    "query": query,
+                    "search_depth": "basic",
+                    "include_answer": False,
+                    "include_raw_content": False,
+                    "max_results": self.max_results,
+                },
+                timeout=self.timeout_seconds,
+            )
+            res.raise_for_status()
+            return res
+
+        response = with_retry(
+            _call_api,
+            max_attempts=settings.retry_max_attempts,
+            base_delay=settings.retry_base_delay_seconds,
+            max_delay=settings.retry_max_delay_seconds,
+            label="search/tavily",
         )
-        response.raise_for_status()
         payload = cast(dict[str, object], response.json())
         return [
             SearchResult(
@@ -69,16 +80,27 @@ class TavilySearchProvider(ApiSearchProvider):
 class BraveSearchProvider(ApiSearchProvider):
     def search(self, query: str) -> list[SearchResult]:
         params: dict[str, str | int] = {"q": query, "count": self.max_results}
-        response = requests.get(
-            "https://api.search.brave.com/res/v1/web/search",
-            headers={
-                "Accept": "application/json",
-                "X-Subscription-Token": self.api_key,
-            },
-            params=params,
-            timeout=self.timeout_seconds,
+
+        def _call_api() -> requests.Response:
+            res = requests.get(
+                "https://api.search.brave.com/res/v1/web/search",
+                headers={
+                    "Accept": "application/json",
+                    "X-Subscription-Token": self.api_key,
+                },
+                params=params,
+                timeout=self.timeout_seconds,
+            )
+            res.raise_for_status()
+            return res
+
+        response = with_retry(
+            _call_api,
+            max_attempts=settings.retry_max_attempts,
+            base_delay=settings.retry_base_delay_seconds,
+            max_delay=settings.retry_max_delay_seconds,
+            label="search/brave",
         )
-        response.raise_for_status()
         payload = cast(dict[str, object], response.json())
         web_payload = payload.get("web")
         if not isinstance(web_payload, dict):

@@ -330,9 +330,7 @@ def get_item_sources(identifier_value: str) -> list[dict[str, Any]]:
 
 
 _LOG_FILE = "collector.log"
-_LOG_PATTERN = re.compile(
-    r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d+) \[(\w+)\] ([\w.]+): (.+)$"
-)
+_LOG_PATTERN = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d+) \[(\w+)\] ([\w.]+): (.+)$")
 
 
 @router.get("/logs")
