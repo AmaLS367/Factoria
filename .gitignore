@@ -153,6 +153,13 @@ cython_debug/
 # Local history
 .history/
 
+# Frontend dependencies and build outputs
+/frontend/node_modules/
+/frontend/dist/
+/frontend/dist-ssr/
+/frontend/.vite/
+/frontend/*.local
+
 # Results and data
 results/
 *.db
