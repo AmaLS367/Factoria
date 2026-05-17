@@ -4,7 +4,6 @@ import time
 from collections.abc import Callable
 from typing import TypeVar
 
-import openai
 import requests
 
 logger = logging.getLogger(__name__)
@@ -33,32 +32,46 @@ def with_retry(
             is_retryable = False
             delay = 0.0
 
-            if isinstance(exc, openai.RateLimitError):
-                is_retryable = True
-                try:
-                    delay = int(exc.response.headers.get("Retry-After", base_delay))
-                except (ValueError, TypeError, AttributeError):
-                    delay = base_delay
-            elif isinstance(exc, openai.APITimeoutError):
-                is_retryable = True
-            elif isinstance(exc, openai.APIConnectionError):
-                is_retryable = True
-            elif isinstance(exc, openai.InternalServerError):
-                # Status 500 or 503 is retryable
-                is_retryable = True
-            elif isinstance(exc, requests.exceptions.Timeout):
-                is_retryable = True
-            elif isinstance(exc, requests.exceptions.ConnectionError):
-                is_retryable = True
-            elif isinstance(exc, requests.exceptions.HTTPError):
-                if hasattr(exc, "response") and exc.response is not None:
-                    if exc.response.status_code in (429, 500, 503):
-                        is_retryable = True
-                        if exc.response.status_code == 429:
-                            try:
-                                delay = int(exc.response.headers.get("Retry-After", base_delay))
-                            except (ValueError, TypeError, AttributeError):
-                                delay = base_delay
+            try:
+                import openai as _openai  # noqa: PLC0415
+
+                if isinstance(exc, _openai.RateLimitError):
+                    is_retryable = True
+                    retry_after = None
+                    try:
+                        retry_after = exc.response.headers.get("Retry-After")
+                    except AttributeError:
+                        pass
+                    if retry_after is not None:
+                        try:
+                            delay = float(retry_after)
+                        except (ValueError, TypeError):
+                            pass
+                elif isinstance(exc, _openai.APITimeoutError):
+                    is_retryable = True
+                elif isinstance(exc, _openai.APIConnectionError):
+                    is_retryable = True
+                elif isinstance(exc, _openai.InternalServerError):
+                    is_retryable = True
+            except ImportError:
+                pass
+
+            if not is_retryable:
+                if isinstance(exc, requests.exceptions.Timeout):
+                    is_retryable = True
+                elif isinstance(exc, requests.exceptions.ConnectionError):
+                    is_retryable = True
+                elif isinstance(exc, requests.exceptions.HTTPError):
+                    if hasattr(exc, "response") and exc.response is not None:
+                        if exc.response.status_code in (429, 500, 503):
+                            is_retryable = True
+                            if exc.response.status_code == 429:
+                                retry_after = exc.response.headers.get("Retry-After")
+                                if retry_after is not None:
+                                    try:
+                                        delay = float(retry_after)
+                                    except (ValueError, TypeError):
+                                        pass
 
             if not is_retryable:
                 raise
