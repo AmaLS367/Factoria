@@ -2,6 +2,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    # Retry Settings
+    retry_max_attempts: int = 3
+    retry_base_delay_seconds: float = 1.0
+    retry_max_delay_seconds: float = 60.0
+
     # API Settings (Legacy)
     openai_api_key: str = ""
     openai_base_url: str = "https://api.deepseek.com/v1"
