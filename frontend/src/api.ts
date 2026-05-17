@@ -32,14 +32,39 @@ export async function collectItem(item_id: string) {
   return res.json();
 }
 
-export async function runExcelJob(file: File) {
+export async function previewFile(file: File, sheetName?: string) {
   const formData = new FormData();
   formData.append('file', file);
+  const url = sheetName
+    ? `${API_BASE_URL}/jobs/excel/preview?sheet_name=${encodeURIComponent(sheetName)}`
+    : `${API_BASE_URL}/jobs/excel/preview`;
+  const res = await fetch(url, { method: 'POST', body: formData });
+  if (!res.ok) throw new Error('Failed to preview file');
+  return res.json();
+}
+
+export async function runExcelJob(file: File, sheetName?: string, columnName?: string) {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (sheetName) formData.append('sheet_name', sheetName);
+  if (columnName) formData.append('column_name', columnName);
   const res = await fetch(`${API_BASE_URL}/jobs/excel`, {
     method: 'POST',
     body: formData,
   });
   if (!res.ok) throw new Error('Failed to run excel job');
+  return res.json();
+}
+
+export async function cancelJob(jobId: string) {
+  const res = await fetch(`${API_BASE_URL}/jobs/${jobId}/cancel`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to cancel job');
+  return res.json();
+}
+
+export async function retryJob(jobId: string) {
+  const res = await fetch(`${API_BASE_URL}/jobs/${jobId}/retry`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to retry job');
   return res.json();
 }
 
