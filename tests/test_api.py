@@ -73,7 +73,10 @@ def test_search(mock_web_search_tool: MagicMock) -> None:
 @patch("backend.api.routes.ResearchAgent")
 def test_collect_item(mock_research_agent: MagicMock, mock_save_single_item: MagicMock) -> None:
     mock_agent_instance = MagicMock()
-    mock_agent_instance.collect_item.return_value = {"Name": "Test Item", "Weight": "1kg"}
+    mock_agent_instance.collect_item_with_confidence.return_value = (
+        {"Name": "Test Item", "Weight": "1kg"},
+        {"Name": 1.0, "Weight": 0.8},
+    )
     mock_research_agent.return_value = mock_agent_instance
 
     response = client.post("/items/collect", json={"item_id": "test-id"})

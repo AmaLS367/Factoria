@@ -81,13 +81,13 @@ def collect_item(request: CollectRequest) -> dict[str, Any]:
     output_fields = ensure_sources_field(settings.target_fields)
 
     try:
-        data = agent.collect_item(item_id, output_fields)
+        data, conf = agent.collect_item_with_confidence(item_id, output_fields)
     except Exception as e:
         logger.error(f"Item collection failed: {e}")
         raise HTTPException(status_code=500, detail="Item collection failed") from e
 
     try:
-        save_single_item(item_id, data, output_fields)
+        save_single_item(item_id, data, output_fields, confidence=conf)
     except Exception as e:
         logger.error(f"Database error: {e}")
         raise HTTPException(status_code=500, detail="Database error") from e
@@ -299,6 +299,29 @@ def export_latest() -> Any:
         )
 
     return JSONResponse(status_code=404, content={"detail": "Export file not found"})
+
+
+@router.get("/items/{identifier_value}/fields")
+def get_item_fields(identifier_value: str) -> list[dict[str, Any]]:
+    db_path = get_db_path()
+    if not os.path.exists(db_path):
+        raise HTTPException(status_code=404, detail="Item not found")
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute(
+            "SELECT id FROM items WHERE identifier_column = ? AND identifier_value = ?",
+            (settings.column_name, identifier_value),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Item not found")
+        fields = conn.execute(
+            "SELECT field_name, field_value, confidence FROM item_fields WHERE item_id = ?",
+            (row["id"],),
+        ).fetchall()
+        return [dict(f) for f in fields]
+    finally:
+        conn.close()
 
 
 @router.get("/items/{identifier_value}/sources")
