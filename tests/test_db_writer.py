@@ -297,3 +297,35 @@ def test_ensure_identifier_index_handles_error(
 
     assert "Could not create unique index for mock_column" in caplog.text
     assert "Mock error" in caplog.text
+
+
+def test_run_isolation(mock_db_writer: Path) -> None:
+    db_writer.init_db(["Name", "Sources"], create_default_run=False)
+
+    run_1 = db_writer.create_run("in1.xlsx", "out1.xlsx", "mock-model", "mock-provider")
+    run_2 = db_writer.create_run("in2.xlsx", "out2.xlsx", "mock-model", "mock-provider")
+
+    # Save to run 1
+    db_writer.save_results_bulk([("A", "Apple", "Apple.com")], ["Name", "Sources"], run_id=run_1)
+
+    # Save to run 2
+    db_writer.save_results_bulk([("B", "Banana", "Banana.com")], ["Name", "Sources"], run_id=run_2)
+
+    # Fetch run 1
+    df1 = db_writer.fetch_all(run_id=run_1)
+    assert df1 is not None
+    assert len(df1) == 1
+    assert df1.iloc[0]["Part Number"] == "A"
+    assert df1.iloc[0]["Name"] == "Apple"
+
+    # Fetch run 2
+    df2 = db_writer.fetch_all(run_id=run_2)
+    assert df2 is not None
+    assert len(df2) == 1
+    assert df2.iloc[0]["Part Number"] == "B"
+    assert df2.iloc[0]["Name"] == "Banana"
+
+    # Fetch all (no run_id filter)
+    df_all = db_writer.fetch_all()
+    assert df_all is not None
+    assert len(df_all) == 2

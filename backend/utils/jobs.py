@@ -14,7 +14,7 @@ def create_job(
     input_file: str, output_file: str, total_items: int, job_id: Optional[str] = None
 ) -> str:
     # Ensure DB is initialized to have the table
-    init_db(settings.target_fields)
+    init_db(settings.target_fields, create_default_run=False)
 
     job_id = job_id or str(uuid.uuid4())
     db_path = get_db_path()
