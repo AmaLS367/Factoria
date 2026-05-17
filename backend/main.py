@@ -80,12 +80,10 @@ def main() -> None:
     agent = ResearchAgent()
     buffer: list[tuple[str, ...]] = []
     existing_ids = get_all_existing_ids()
+    col_idx = list(df.columns).index(settings.column_name) + 1
 
     for start in range(0, len(df), settings.batch_size):
         batch_df = df.iloc[start : start + settings.batch_size]
-
-        # Get column index for itertuples (add 1 because index is at position 0)
-        col_idx = batch_df.columns.get_loc(settings.column_name) + 1
 
         for row in tqdm(batch_df.itertuples(), total=len(batch_df), desc="Processing batch"):
             item_id = str(row[col_idx])
