@@ -9,23 +9,35 @@ from backend.utils.migrations import run_migrations
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = os.path.abspath(settings.db_path)
+
+def get_db_path() -> str:
+    return os.path.abspath(settings.db_path)
+
 
 _CURRENT_RUN_ID: int | None = None
+_CURRENT_RUN_DB_PATH: str | None = None
 SOURCES_FIELD_NAME = "Sources"
 
 
 def init_db(fields: list[str]) -> None:
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    db_path = get_db_path()
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON")
     try:
         run_migrations(conn, settings.column_name, fields)
         conn.commit()
 
         # Create or fetch a run for this session
-        global _CURRENT_RUN_ID
-        if _CURRENT_RUN_ID is None:
+        global _CURRENT_RUN_DB_PATH, _CURRENT_RUN_ID
+        current_run_exists = False
+        if _CURRENT_RUN_ID is not None and _CURRENT_RUN_DB_PATH == db_path:
+            current_run_exists = (
+                conn.execute("SELECT 1 FROM runs WHERE id = ?", (_CURRENT_RUN_ID,)).fetchone()
+                is not None
+            )
+
+        if not current_run_exists:
             cur = conn.cursor()
             cur.execute(
                 """
@@ -40,15 +52,17 @@ def init_db(fields: list[str]) -> None:
                 ),  # noqa: E501
             )
             _CURRENT_RUN_ID = cur.lastrowid
+            _CURRENT_RUN_DB_PATH = db_path
             conn.commit()
 
     finally:
         conn.close()
-    logger.info(f"Database initialized at {DB_PATH}")
+    logger.info(f"Database initialized at {db_path}")
 
 
 def detail_exists(item_id: str) -> bool:
-    conn = sqlite3.connect(DB_PATH)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON")
     cur = conn.cursor()
     cur.execute(
@@ -67,12 +81,16 @@ def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> No
     if not data_list:
         return
 
-    conn = sqlite3.connect(DB_PATH)
+    db_path = get_db_path()
+    if _CURRENT_RUN_ID is None or _CURRENT_RUN_DB_PATH != db_path:
+        raise RuntimeError(
+            "save_results_bulk called before init_db for the current database path; "
+            "_CURRENT_RUN_ID is not set."
+        )
+
+    conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON")
     cur = conn.cursor()
-
-    if _CURRENT_RUN_ID is None:
-        raise RuntimeError("save_results_bulk called before init_db; _CURRENT_RUN_ID is not set.")
 
     all_fields = [settings.column_name] + [f for f in fields if f != settings.column_name]
 
@@ -137,7 +155,8 @@ def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> No
 
 
 def fetch_all() -> pd.DataFrame | None:
-    conn = sqlite3.connect(DB_PATH)
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON")
     try:
         # Fetch items

@@ -22,10 +22,10 @@ def mock_db_writer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         },
     )()
 
-    monkeypatch.setattr(db_writer, "DB_PATH", str(db_path))
     monkeypatch.setattr(db_writer, "settings", mock_settings)
 
     db_writer._CURRENT_RUN_ID = None
+    db_writer._CURRENT_RUN_DB_PATH = None
 
     return db_path
 
@@ -179,6 +179,41 @@ def test_save_results_bulk_stores_none_as_null(mock_db_writer: Path) -> None:
         assert set(fields) == {("Name", None), ("Description", "A Description")}
     finally:
         conn.close()
+
+
+def test_switching_db_path_creates_run_for_new_database(
+    mock_db_writer: Path, tmp_path: Path
+) -> None:
+    first_db_path = mock_db_writer
+    second_db_path = tmp_path / "second.sqlite"
+
+    db_writer.init_db(["Name"])
+    db_writer.save_results_bulk([("A", "Apple")], ["Name"])
+
+    db_writer.settings.db_path = str(second_db_path)
+    db_writer.init_db(["Name"])
+    db_writer.save_results_bulk([("B", "Banana")], ["Name"])
+
+    for db_path, expected_item in [(first_db_path, "A"), (second_db_path, "B")]:
+        conn = sqlite3.connect(db_path)
+        try:
+            runs_count = conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+            item_values = conn.execute("SELECT identifier_value FROM items").fetchall()
+        finally:
+            conn.close()
+
+        assert runs_count >= 1
+        assert item_values == [(expected_item,)]
+
+
+def test_save_results_bulk_rejects_changed_db_path_without_init(
+    mock_db_writer: Path, tmp_path: Path
+) -> None:
+    db_writer.init_db(["Name"])
+    db_writer.settings.db_path = str(tmp_path / "changed.sqlite")
+
+    with pytest.raises(RuntimeError, match="current database path"):
+        db_writer.save_results_bulk([("A", "Apple")], ["Name"])
 
 
 def test_migration_is_safe_if_legacy_results_exists(mock_db_writer: Path) -> None:
