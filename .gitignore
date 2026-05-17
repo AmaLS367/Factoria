@@ -162,6 +162,7 @@ cython_debug/
 
 # Results and data
 results/
+docs/jules-prompts
 *.db
 *.xlsx
 *.csv
