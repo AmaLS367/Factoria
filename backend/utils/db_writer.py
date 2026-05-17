@@ -60,21 +60,21 @@ def init_db(fields: list[str]) -> None:
     logger.info(f"Database initialized at {db_path}")
 
 
-def detail_exists(item_id: str) -> bool:
+def get_all_existing_ids() -> set[str]:
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON")
     cur = conn.cursor()
     cur.execute(
         """
-        SELECT 1 FROM items
-        WHERE identifier_column = ? AND identifier_value = ?
+        SELECT identifier_value FROM items
+        WHERE identifier_column = ?
         """,
-        (settings.column_name, item_id),
+        (settings.column_name,),
     )
-    result = cur.fetchone()
+    result = {row[0] for row in cur.fetchall()}
     conn.close()
-    return result is not None
+    return result
 
 
 def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> None:
