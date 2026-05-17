@@ -4,6 +4,8 @@ import re
 
 logger = logging.getLogger(__name__)
 
+_JSON_PATTERN = re.compile(r"\{.*\}", re.DOTALL)
+
 
 def parse_answer(answer: str, fields: list[str]) -> dict[str, str]:
     """
@@ -11,7 +13,7 @@ def parse_answer(answer: str, fields: list[str]) -> dict[str, str]:
     """
     try:
         # Try to find JSON block if it's wrapped in markdown
-        json_match = re.search(r"\{.*\}", answer, re.DOTALL)
+        json_match = _JSON_PATTERN.search(answer)
         if json_match:
             data = json.loads(json_match.group())
         else:
