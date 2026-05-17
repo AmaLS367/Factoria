@@ -272,3 +272,27 @@ def test_repeated_migration_does_not_duplicate_legacy_data(mock_db_writer: Path)
         assert items_count == 1
     finally:
         conn.close()
+
+
+def test_ensure_identifier_index_handles_error(
+    mock_db_writer: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+    import sqlite3
+
+    from backend.utils.migrations import ensure_identifier_index
+
+    class MockCursor:
+        def execute(self, query: str, parameters: tuple[str, ...] = ()) -> None:
+            raise sqlite3.Error("Mock error")
+
+    from typing import cast
+
+    cur = cast(sqlite3.Cursor, MockCursor())
+
+    with caplog.at_level(logging.WARNING):
+        # Should not raise exception, just log a warning
+        ensure_identifier_index(cur, "mock_column")
+
+    assert "Could not create unique index for mock_column" in caplog.text
+    assert "Mock error" in caplog.text
