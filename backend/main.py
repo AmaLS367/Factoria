@@ -14,12 +14,10 @@ from utils.db_writer import detail_exists, fetch_all, init_db, save_results_bulk
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.FileHandler("collector.log"),
-        logging.StreamHandler()
-    ]
+    handlers=[logging.FileHandler("collector.log"), logging.StreamHandler()],
 )
 logger = logging.getLogger(__name__)
+
 
 def format_output_excel(filepath: str, df: pd.DataFrame | None) -> None:
     if df is None or df.empty:
@@ -80,11 +78,10 @@ def main() -> None:
 
             parsed = agent.collect_item(item_id, output_fields)
 
-            row_data = (item_id, *[
-                parsed.get(f, "Not found")
-                for f in output_fields
-                if f != settings.column_name
-            ])
+            row_data = (
+                item_id,
+                *[parsed.get(f, "Not found") for f in output_fields if f != settings.column_name],
+            )
             buffer.append(row_data)
 
         if buffer:

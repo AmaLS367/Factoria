@@ -9,14 +9,18 @@ from utils import db_writer
 def mock_db_writer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     db_path = tmp_path / "database.sqlite"
 
-    mock_settings = type("MockSettings", (), {
-        "column_name": "Part Number",
-        "input_file": "input.xlsx",
-        "output_file": "output.xlsx",
-        "model_name": "mock-model",
-        "web_search_provider": "mock-provider",
-        "db_path": str(db_path)
-    })()
+    mock_settings = type(
+        "MockSettings",
+        (),
+        {
+            "column_name": "Part Number",
+            "input_file": "input.xlsx",
+            "output_file": "output.xlsx",
+            "model_name": "mock-model",
+            "web_search_provider": "mock-provider",
+            "db_path": str(db_path),
+        },
+    )()
 
     monkeypatch.setattr(db_writer, "DB_PATH", str(db_path))
     monkeypatch.setattr(db_writer, "settings", mock_settings)
@@ -46,7 +50,7 @@ def test_migration_converts_legacy_results_to_normalized_tables(mock_db_writer: 
             INSERT INTO results ("Part Number", "Name", "Sources")
             VALUES (?, ?, ?)
             """,
-            ("OLD-123", "Old Widget", "http://old.com\nhttp://old2.com\nhttp://old.com")
+            ("OLD-123", "Old Widget", "http://old.com\nhttp://old2.com\nhttp://old.com"),
         )
         conn.commit()
     finally:
@@ -82,10 +86,20 @@ def test_migration_converts_legacy_results_to_normalized_tables(mock_db_writer: 
     # Normalized tables check
     conn = sqlite3.connect(mock_db_writer)
     try:
-        results_exists = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='results'").fetchone() is not None  # noqa: E501
+        results_exists = (
+            conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='results'"
+            ).fetchone()
+            is not None
+        )  # noqa: E501
         assert not results_exists
 
-        legacy_exists = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='legacy_results'").fetchone() is not None  # noqa: E501
+        legacy_exists = (
+            conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='legacy_results'"
+            ).fetchone()
+            is not None
+        )  # noqa: E501
         assert legacy_exists
 
         items_count = conn.execute("SELECT COUNT(*) FROM items").fetchone()[0]
@@ -170,7 +184,9 @@ def test_save_results_bulk_stores_none_as_null(mock_db_writer: Path) -> None:
 def test_migration_is_safe_if_legacy_results_exists(mock_db_writer: Path) -> None:
     conn = sqlite3.connect(mock_db_writer)
     try:
-        conn.execute("CREATE TABLE legacy_results (id INTEGER PRIMARY KEY, \"Part Number\" TEXT UNIQUE)")  # noqa: E501
+        conn.execute(
+            'CREATE TABLE legacy_results (id INTEGER PRIMARY KEY, "Part Number" TEXT UNIQUE)'
+        )  # noqa: E501
         conn.execute("INSERT INTO legacy_results (\"Part Number\") VALUES ('OLD-1')")
         conn.commit()
     finally:
@@ -186,7 +202,9 @@ def test_migration_is_safe_if_legacy_results_exists(mock_db_writer: Path) -> Non
 def test_repeated_migration_does_not_duplicate_legacy_data(mock_db_writer: Path) -> None:
     conn = sqlite3.connect(mock_db_writer)
     try:
-        conn.execute("CREATE TABLE results (id INTEGER PRIMARY KEY, \"Part Number\" TEXT UNIQUE, \"Name\" TEXT)")  # noqa: E501
+        conn.execute(
+            'CREATE TABLE results (id INTEGER PRIMARY KEY, "Part Number" TEXT UNIQUE, "Name" TEXT)'
+        )  # noqa: E501
         conn.execute("INSERT INTO results (\"Part Number\", \"Name\") VALUES ('OLD-1', 'A')")
         conn.commit()
     finally:
