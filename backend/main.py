@@ -26,7 +26,12 @@ from backend.utils.db_writer import (
     prepare_row_data,
     save_results_bulk,
 )
-from backend.utils.jobs import update_job_progress, update_job_status, update_job_total_items
+from backend.utils.jobs import (
+    get_job,
+    update_job_progress,
+    update_job_status,
+    update_job_total_items,
+)
 
 # Setup logging
 logging.basicConfig(
@@ -72,7 +77,11 @@ def format_output_excel(filepath: str, df: pd.DataFrame | None) -> None:
 
 
 def main(
-    job_id: str | None = None, input_file: str | None = None, output_file: str | None = None
+    job_id: str | None = None,
+    input_file: str | None = None,
+    output_file: str | None = None,
+    sheet_name: str | None = None,
+    column_name: str | None = None,
 ) -> None:
     logger.info("Starting AI Data Collector")
 
@@ -80,6 +89,9 @@ def main(
     output_file_path = output_file or settings.output_file
 
     if job_id:
+        job = get_job(job_id)
+        if job and job.get("status") == "cancelled":
+            return
         update_job_status(job_id, "running")
 
     output_fields = ensure_sources_field(settings.target_fields)
@@ -109,8 +121,14 @@ def main(
         init_db(output_fields)
         current_run_id = db_writer._CURRENT_RUN_ID
 
+    effective_sheet = sheet_name or settings.sheet_name
+    effective_column = column_name or settings.column_name
+
     try:
-        df = pd.read_excel(input_file_path, sheet_name=settings.sheet_name)
+        if input_file_path.endswith(".csv"):
+            df = pd.read_csv(input_file_path)
+        else:
+            df = pd.read_excel(input_file_path, sheet_name=effective_sheet)
         if job_id:
             update_job_total_items(job_id, len(df))
     except Exception as e:
@@ -123,9 +141,9 @@ def main(
     buffer: list[tuple[str, ...]] = []
     existing_ids = get_all_existing_ids()
     try:
-        col_idx = list(df.columns).index(settings.column_name) + 1
+        col_idx = list(df.columns).index(effective_column) + 1
     except ValueError:
-        error_msg = f"Column '{settings.column_name}' not found in the Excel file."
+        error_msg = f"Column '{effective_column}' not found in the input file."
         logger.error(error_msg)
         if job_id:
             update_job_status(job_id, "failed", error_msg)
@@ -133,6 +151,12 @@ def main(
 
     try:
         for start in range(0, len(df), settings.batch_size):
+            if job_id:
+                current_job = get_job(job_id)
+                if current_job and current_job.get("status") == "cancelled":
+                    logger.info(f"Job {job_id} was cancelled — stopping after batch {start}")
+                    return
+
             batch_df = df.iloc[start : start + settings.batch_size]
 
             processed_in_batch = 0
