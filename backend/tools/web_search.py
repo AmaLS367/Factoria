@@ -1,4 +1,5 @@
 import logging
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Protocol, cast
 
@@ -25,12 +26,20 @@ class SearchProvider(Protocol):
         """Return normalized search results for the query."""
 
 
-class TavilySearchProvider:
+class ApiSearchProvider(ABC):
+    """Base class for API-based search providers requiring an API key."""
+
     def __init__(self, api_key: str, max_results: int, timeout_seconds: int) -> None:
         self.api_key = api_key
         self.max_results = max_results
         self.timeout_seconds = timeout_seconds
 
+    @abstractmethod
+    def search(self, query: str) -> list[SearchResult]:
+        """Return normalized search results for the query."""
+
+
+class TavilySearchProvider(ApiSearchProvider):
     def search(self, query: str) -> list[SearchResult]:
         response = requests.post(
             "https://api.tavily.com/search",
@@ -56,12 +65,7 @@ class TavilySearchProvider:
         ]
 
 
-class BraveSearchProvider:
-    def __init__(self, api_key: str, max_results: int, timeout_seconds: int) -> None:
-        self.api_key = api_key
-        self.max_results = max_results
-        self.timeout_seconds = timeout_seconds
-
+class BraveSearchProvider(ApiSearchProvider):
     def search(self, query: str) -> list[SearchResult]:
         params: dict[str, str | int] = {"q": query, "count": self.max_results}
         response = requests.get(
