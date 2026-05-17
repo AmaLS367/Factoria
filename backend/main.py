@@ -22,6 +22,7 @@ from backend.utils.db_writer import (
     prepare_row_data,
     save_results_bulk,
 )
+from backend.utils.jobs import update_job_progress, update_job_status
 
 # Setup logging
 logging.basicConfig(
@@ -66,8 +67,12 @@ def format_output_excel(filepath: str, df: pd.DataFrame | None) -> None:
     logger.info(f"Results formatted and saved to {filepath}")
 
 
-def main() -> None:
+def main(job_id: str | None = None) -> None:
     logger.info("Starting AI Data Collector")
+
+    if job_id:
+        update_job_status(job_id, "running")
+
     output_fields = ensure_sources_field(settings.target_fields)
     init_db(output_fields)
 
@@ -75,35 +80,69 @@ def main() -> None:
         df = pd.read_excel(settings.input_file, sheet_name=settings.sheet_name)
     except Exception as e:
         logger.error(f"Failed to read input file: {e}")
+        if job_id:
+            update_job_status(job_id, "failed", str(e))
         return
 
     agent = ResearchAgent()
     buffer: list[tuple[str, ...]] = []
     existing_ids = get_all_existing_ids()
-    col_idx = list(df.columns).index(settings.column_name) + 1
+    try:
+        col_idx = list(df.columns).index(settings.column_name) + 1
+    except ValueError:
+        error_msg = f"Column '{settings.column_name}' not found in the Excel file."
+        logger.error(error_msg)
+        if job_id:
+            update_job_status(job_id, "failed", error_msg)
+        return
 
-    for start in range(0, len(df), settings.batch_size):
-        batch_df = df.iloc[start : start + settings.batch_size]
+    try:
+        for start in range(0, len(df), settings.batch_size):
+            batch_df = df.iloc[start : start + settings.batch_size]
 
-        for row in tqdm(batch_df.itertuples(), total=len(batch_df), desc="Processing batch"):
-            item_id = str(row[col_idx])
+            processed_in_batch = 0
+            skipped_in_batch = 0
+            failed_in_batch = 0
 
-            if item_id in existing_ids:
-                logger.debug(f"Skipping {item_id} — already in database")
-                continue
+            for row in tqdm(batch_df.itertuples(), total=len(batch_df), desc="Processing batch"):
+                item_id = str(row[col_idx])
 
-            parsed = agent.collect_item(item_id, output_fields)
+                if item_id in existing_ids:
+                    logger.debug(f"Skipping {item_id} — already in database")
+                    skipped_in_batch += 1
+                    continue
 
-            row_data = prepare_row_data(item_id, parsed, output_fields)
-            buffer.append(row_data)
+                try:
+                    parsed = agent.collect_item(item_id, output_fields)
+                    row_data = prepare_row_data(item_id, parsed, output_fields)
+                    buffer.append(row_data)
+                    processed_in_batch += 1
+                except Exception as e:
+                    logger.error(f"Failed processing item {item_id}: {e}")
+                    failed_in_batch += 1
 
-        if buffer:
-            save_results_bulk(buffer, output_fields)
-            buffer.clear()
+            if buffer:
+                save_results_bulk(buffer, output_fields)
+                buffer.clear()
 
-    final_df = fetch_all()
-    format_output_excel(settings.output_file, final_df)
-    logger.info("Data collection completed successfully")
+            if job_id:
+                update_job_progress(
+                    job_id,
+                    processed=processed_in_batch,
+                    skipped=skipped_in_batch,
+                    failed=failed_in_batch,
+                )
+
+        final_df = fetch_all()
+        format_output_excel(settings.output_file, final_df)
+        logger.info("Data collection completed successfully")
+        if job_id:
+            update_job_status(job_id, "completed")
+
+    except Exception as e:
+        logger.error(f"Data collection failed: {e}")
+        if job_id:
+            update_job_status(job_id, "failed", str(e))
 
 
 if __name__ == "__main__":
