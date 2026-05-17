@@ -1,3 +1,4 @@
+import logging
 from typing import Protocol
 
 from backend.clients.llm_client import LLMClient
@@ -9,7 +10,10 @@ from backend.tools.web_search import (
     format_search_context,
     format_sources,
 )
+from backend.utils.cache import get_cache, make_cache_key, set_cache
 from backend.utils.parse import parse_answer
+
+logger = logging.getLogger(__name__)
 
 SOURCES_FIELD = "Sources"
 
@@ -44,8 +48,52 @@ class ResearchAgent:
             fields=output_fields,
             web_context=format_search_context(search_results),
         )
-        raw_response = self.llm_client.get_answer(prompt)
-        parsed = parse_answer(raw_response, output_fields)
+
+        use_cache = settings.cache_enabled and settings.cache_llm_enabled
+        provider = settings.resolved_llm_provider
+        model = settings.resolved_llm_model
+
+        if use_cache:
+            payload = {
+                "item_id": item_id,
+                "target_fields": output_fields,
+                "search_context": [r.to_dict() for r in search_results],
+                "prompt_version": "extract_v1",
+                "system_prompt": settings.system_prompt,
+            }
+            cache_key = make_cache_key("llm_extract", provider, model, payload)
+            cached_parsed = get_cache(cache_key)
+            if cached_parsed is not None and isinstance(cached_parsed, dict):
+                logger.info(f"LLM extract cache hit for item: {item_id}")
+                parsed = {str(k): str(v) for k, v in cached_parsed.items()}
+            else:
+                raw_response = self.llm_client.get_answer(prompt)
+                parsed = parse_answer(raw_response, output_fields)
+
+                # Check if it was a successful parse (at least one field not "Not found" or None)
+                # but "Sources" might be the only one, wait, the requirement says:
+                # "cache only successful parsed dicts. Do not cache invalid/empty parse failures."
+                # parse_answer returns missing as None or skips them.
+                has_extracted_data = any(
+                    v not in {None, "", "Not found"}
+                    for k, v in parsed.items()
+                    if k != SOURCES_FIELD
+                )
+
+                if has_extracted_data:
+                    logger.info(f"LLM extract cache miss for item: {item_id}")
+                    set_cache(
+                        cache_key=cache_key,
+                        kind="llm_extract",
+                        provider=provider,
+                        model=model,
+                        input_hash=cache_key,  # Placeholder
+                        payload=parsed,
+                        ttl_days=settings.cache_llm_ttl_days,
+                    )
+        else:
+            raw_response = self.llm_client.get_answer(prompt)
+            parsed = parse_answer(raw_response, output_fields)
 
         if parsed.get(SOURCES_FIELD) in {None, "", "Not found"}:
             parsed[SOURCES_FIELD] = format_sources(search_results)
