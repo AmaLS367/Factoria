@@ -4,7 +4,6 @@ import re
 
 logger = logging.getLogger(__name__)
 
-# Compile the regex pattern once at the module level for performance
 _JSON_PATTERN = re.compile(r"\{.*\}", re.DOTALL)
 
 
