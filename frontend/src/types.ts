@@ -30,7 +30,7 @@ export interface ExcelJobStatus {
 
 export interface Job {
   job_id: string;
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
   created_at: string;
   started_at?: string;
   finished_at?: string;
@@ -47,7 +47,7 @@ export interface Job {
 }
 
 export interface PreviewResult {
-  file_type: 'xlsx' | 'csv';
+  file_type: "xlsx" | "csv";
   sheets: string[];
   columns: string[];
   row_count: number;
@@ -74,4 +74,10 @@ export interface LogsResponse {
   entries: LogEntry[];
   total_returned: number;
   file: string;
+}
+
+export interface ItemField {
+  field_name: string;
+  field_value: string;
+  confidence: number | null;
 }

@@ -104,16 +104,24 @@ def prepare_row_data(
 
 
 def save_single_item(
-    item_id: str, data: dict[str, Any], output_fields: list[str], run_id: int | None = None
+    item_id: str,
+    data: dict[str, Any],
+    output_fields: list[str],
+    run_id: int | None = None,
+    confidence: dict[str, float | None] | None = None,
 ) -> None:
     """Initialize the database and save a single item's data."""
     init_db(output_fields, create_default_run=(run_id is None))
     row_data = prepare_row_data(item_id, data, output_fields)
-    save_results_bulk([row_data], output_fields, run_id=run_id)
+    conf_list = [confidence] if confidence is not None else None
+    save_results_bulk([row_data], output_fields, run_id=run_id, confidence_list=conf_list)
 
 
 def save_results_bulk(
-    data_list: list[tuple[str, ...]], fields: list[str], run_id: int | None = None
+    data_list: list[tuple[str, ...]],
+    fields: list[str],
+    run_id: int | None = None,
+    confidence_list: list[dict[str, float | None]] | None = None,
 ) -> None:
     if not data_list:
         return
@@ -142,7 +150,7 @@ def save_results_bulk(
             )  # noqa: E501
 
     try:
-        for row_data in data_list:
+        for row_index, row_data in enumerate(data_list):
             item_id = row_data[0]
 
             # Try to insert item (or ignore if it already exists to maintain idempotency)
@@ -180,12 +188,17 @@ def save_results_bulk(
                                 (db_item_id, "", url, "", "legacy", score_source(url)),
                             )
                 else:
+                    conf_val = None
+                    if confidence_list is not None and row_index < len(confidence_list):
+                        if confidence_list[row_index]:
+                            conf_val = confidence_list[row_index].get(field_name)
+
                     cur.execute(
                         """
-                        INSERT INTO item_fields (item_id, field_name, field_value)
-                        VALUES (?, ?, ?)
+                        INSERT INTO item_fields (item_id, field_name, field_value, confidence)
+                        VALUES (?, ?, ?, ?)
                         """,
-                        (db_item_id, field_name, field_value),
+                        (db_item_id, field_name, field_value, conf_val),
                     )
 
         conn.commit()
