@@ -45,6 +45,7 @@ def format_output_excel(filepath: str, df: pd.DataFrame | None) -> None:
     for row in dataframe_to_rows(df, index=False, header=True):
         ws.append(row)
 
+    wrap_alignment = Alignment(wrap_text=True, vertical="top")
     for col in ws.columns:
         column_idx = col[0].column
         if not isinstance(column_idx, int):
@@ -53,7 +54,7 @@ def format_output_excel(filepath: str, df: pd.DataFrame | None) -> None:
         max_length = 0
         col_letter = get_column_letter(column_idx)
         for cell in col:
-            cell.alignment = Alignment(wrap_text=True, vertical="top")
+            cell.alignment = wrap_alignment
             if cell.value:
                 max_length = max(max_length, len(str(cell.value)))
         ws.column_dimensions[col_letter].width = min(max_length * 1.1, 60)
@@ -79,12 +80,13 @@ def main() -> None:
     agent = ResearchAgent()
     buffer: list[tuple[str, ...]] = []
     existing_ids = get_all_existing_ids()
+    col_idx = list(df.columns).index(settings.column_name) + 1
 
     for start in range(0, len(df), settings.batch_size):
         batch_df = df.iloc[start : start + settings.batch_size]
 
-        for _, row in tqdm(batch_df.iterrows(), total=len(batch_df), desc="Processing batch"):
-            item_id = str(row[settings.column_name])
+        for row in tqdm(batch_df.itertuples(), total=len(batch_df), desc="Processing batch"):
+            item_id = str(row[col_idx])
 
             if item_id in existing_ids:
                 logger.debug(f"Skipping {item_id} — already in database")

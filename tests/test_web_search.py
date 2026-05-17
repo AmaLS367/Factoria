@@ -244,3 +244,44 @@ def test_batch_main_uses_research_agent_and_persists_sources(
 
     assert initialized_fields == ensure_sources_field(["Name"])
     assert saved == [("ABC-123", "Name ABC-123", "https://example.com")]
+
+
+def test_web_search_tool_handles_provider_exceptions(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    from tools.web_search import DdgsSearchProvider, WebSearchTool
+
+    def fake_search_raises(*args: object, **kwargs: object) -> list[SearchResult]:
+        raise RuntimeError("Mock provider failure")
+
+    monkeypatch.setattr(DdgsSearchProvider, "search", fake_search_raises)
+
+    tool = WebSearchTool(provider="ddgs", enabled=True)
+
+    with caplog.at_level(logging.WARNING):
+        results = tool.search("test query")
+
+    assert results == []
+    assert "Web search failed for query" in caplog.text
+    assert "Mock provider failure" in caplog.text
+
+
+def test_batch_main_handles_input_file_read_error(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    batch_module = cast(Any, batch_main)
+
+    def fake_read_excel(*args: object, **kwargs: object) -> None:
+        raise ValueError("Simulated read error")
+
+    monkeypatch.setattr(batch_module.pd, "read_excel", fake_read_excel)
+    monkeypatch.setattr(batch_main, "init_db", lambda fields: None)
+
+    with caplog.at_level(logging.ERROR):
+        batch_main.main()
+
+    assert "Failed to read input file: Simulated read error" in caplog.text
