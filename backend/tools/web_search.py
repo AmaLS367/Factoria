@@ -31,6 +31,9 @@ class ApiSearchProvider:
         self.max_results = max_results
         self.timeout_seconds = timeout_seconds
 
+    def search(self, query: str) -> list[SearchResult]:
+        raise NotImplementedError
+
 
 class TavilySearchProvider(ApiSearchProvider):
     def search(self, query: str) -> list[SearchResult]:
