@@ -105,6 +105,7 @@ def test_cache_cleanup() -> None:
     assert key1 not in keys
     assert key2 in keys
 
+
 def test_cache_initializes_missing_directory(tmp_path: Path) -> None:
     # Set db path to a directory that doesn't exist yet
     missing_dir = tmp_path / "missing"
