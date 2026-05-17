@@ -17,7 +17,7 @@ from backend.agents.research_agent import ResearchAgent, build_search_query, ens
 from backend.clients.llm_client import LLMClient
 from backend.config import settings
 from backend.tools.web_search import WebSearchTool
-from backend.utils.db_writer import init_db, save_results_bulk
+from backend.utils.db_writer import save_single_item
 
 # Force UTF-8 for Windows if needed, but rich usually handles it
 console = Console()
@@ -61,15 +61,7 @@ def process_single_item(item_id: str) -> None:
 
     # Save to DB
     output_fields = ensure_sources_field(settings.target_fields)
-    init_db(output_fields)
-
-    # Prepare row for DB
-    row_data = (
-        item_id,
-        *[data.get(f, "Not found") for f in output_fields if f != settings.column_name],
-    )
-
-    save_results_bulk([row_data], output_fields)
+    save_single_item(item_id, data, output_fields)
     console.print(f"\n[bold green]Success![/] [dim]({settings.db_path})[/]")
 
 
