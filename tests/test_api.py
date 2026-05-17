@@ -69,12 +69,9 @@ def test_search(mock_web_search_tool: MagicMock) -> None:
     mock_instance.search.assert_called_once_with("test query")
 
 
-@patch("backend.api.routes.save_results_bulk")
-@patch("backend.api.routes.init_db")
+@patch("backend.api.routes.save_single_item")
 @patch("backend.api.routes.ResearchAgent")
-def test_collect_item(
-    mock_research_agent: MagicMock, mock_init_db: MagicMock, mock_save_results: MagicMock
-) -> None:
+def test_collect_item(mock_research_agent: MagicMock, mock_save_single_item: MagicMock) -> None:
     mock_agent_instance = MagicMock()
     mock_agent_instance.collect_item.return_value = {"Name": "Test Item", "Weight": "1kg"}
     mock_research_agent.return_value = mock_agent_instance
@@ -83,8 +80,7 @@ def test_collect_item(
     assert response.status_code == 200
     data = response.json()
     assert data["Name"] == "Test Item"
-    mock_init_db.assert_called_once()
-    mock_save_results.assert_called_once()
+    mock_save_single_item.assert_called_once()
 
 
 @patch("backend.api.routes.os.path.exists")

@@ -12,7 +12,7 @@ from backend.agents.research_agent import ResearchAgent, ensure_sources_field
 from backend.config import settings
 from backend.main import main as run_excel_job
 from backend.tools.web_search import WebSearchTool
-from backend.utils.db_writer import fetch_all, get_db_path, init_db, save_results_bulk
+from backend.utils.db_writer import fetch_all, get_db_path, save_single_item
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -79,17 +79,8 @@ def collect_item(request: CollectRequest) -> dict[str, Any]:
         logger.error(f"Item collection failed: {e}")
         raise HTTPException(status_code=500, detail="Item collection failed") from e
 
-    # Initialize DB in case it wasn't
-    init_db(output_fields)
-
-    # Convert data dict back to tuple order for save_results_bulk
-    row_data = (
-        item_id,
-        *[data.get(f, "Not found") for f in output_fields if f != settings.column_name],
-    )
-
     try:
-        save_results_bulk([row_data], output_fields)
+        save_single_item(item_id, data, output_fields)
     except Exception as e:
         logger.error(f"Database error: {e}")
         raise HTTPException(status_code=500, detail="Database error") from e

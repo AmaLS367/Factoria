@@ -1,6 +1,7 @@
 import logging
 import os
 import sqlite3
+from typing import Any
 
 import pandas as pd
 
@@ -78,6 +79,23 @@ def get_all_existing_ids() -> set[str]:
         conn.close()
 
 
+def prepare_row_data(
+    item_id: str, data: dict[str, Any], output_fields: list[str]
+) -> tuple[str, ...]:
+    """Prepare a row of data for database insertion."""
+    return (
+        item_id,
+        *[data.get(f, "Not found") for f in output_fields if f != settings.column_name],
+    )
+
+
+def save_single_item(item_id: str, data: dict[str, Any], output_fields: list[str]) -> None:
+    """Initialize the database and save a single item's data."""
+    init_db(output_fields)
+    row_data = prepare_row_data(item_id, data, output_fields)
+    save_results_bulk([row_data], output_fields)
+
+
 def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> None:
     if not data_list:
         return
@@ -151,6 +169,7 @@ def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> No
         logger.info(f"Saved {len(data_list)} items to database")
     except Exception as e:
         logger.error(f"Error saving to database: {e}")
+        raise
     finally:
         conn.close()
 
