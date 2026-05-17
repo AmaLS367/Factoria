@@ -169,6 +169,7 @@ def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> No
         logger.info(f"Saved {len(data_list)} items to database")
     except Exception as e:
         logger.error(f"Error saving to database: {e}")
+        raise
     finally:
         conn.close()
 
