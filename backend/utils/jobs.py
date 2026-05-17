@@ -11,7 +11,12 @@ logger = logging.getLogger(__name__)
 
 
 def create_job(
-    input_file: str, output_file: str, total_items: int, job_id: Optional[str] = None
+    input_file: str,
+    output_file: str,
+    total_items: int,
+    job_id: Optional[str] = None,
+    sheet_name: Optional[str] = None,
+    column_name: Optional[str] = None,
 ) -> str:
     # Ensure DB is initialized to have the table
     init_db(settings.target_fields, create_default_run=False)
@@ -23,16 +28,39 @@ def create_job(
         cur = conn.cursor()
         cur.execute(
             """
-            INSERT INTO jobs (job_id, status, input_file, output_file, total_items)
-            VALUES (?, 'queued', ?, ?, ?)
+            INSERT INTO jobs (job_id, status, input_file, output_file, total_items, sheet_name, column_name)
+            VALUES (?, 'queued', ?, ?, ?, ?, ?)
             """,
-            (job_id, input_file, output_file, total_items),
+            (job_id, input_file, output_file, total_items, sheet_name, column_name),
         )
         conn.commit()
         return job_id
     except Exception as e:
         logger.error(f"Error creating job {job_id}: {e}")
         raise
+    finally:
+        conn.close()
+
+
+def cancel_job(job_id: str) -> bool:
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT status FROM jobs WHERE job_id = ?", (job_id,))
+        row = cur.fetchone()
+        if not row or row[0] not in ("queued", "running"):
+            return False
+        cur.execute(
+            "UPDATE jobs SET status = 'cancelled', finished_at = ? WHERE job_id = ?",
+            (now, job_id),
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Error cancelling job {job_id}: {e}")
+        return False
     finally:
         conn.close()
 
@@ -50,7 +78,7 @@ def update_job_status(job_id: str, status: str, error_message: Optional[str] = N
         if status == "running":
             updates.append("started_at = ?")
             params.append(now)
-        elif status in ("completed", "failed"):
+        elif status in ("completed", "failed", "cancelled"):
             updates.append("finished_at = ?")
             params.append(now)
 
