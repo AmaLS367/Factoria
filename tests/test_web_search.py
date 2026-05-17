@@ -266,3 +266,22 @@ def test_web_search_tool_handles_provider_exceptions(
     assert results == []
     assert "Web search failed for query" in caplog.text
     assert "Mock provider failure" in caplog.text
+
+
+def test_batch_main_handles_input_file_read_error(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    batch_module = cast(Any, batch_main)
+
+    def fake_read_excel(*args: object, **kwargs: object) -> None:
+        raise ValueError("Simulated read error")
+
+    monkeypatch.setattr(batch_module.pd, "read_excel", fake_read_excel)
+    monkeypatch.setattr(batch_main, "init_db", lambda fields: None)
+
+    with caplog.at_level(logging.ERROR):
+        batch_main.main()
+
+    assert "Failed to read input file: Simulated read error" in caplog.text
