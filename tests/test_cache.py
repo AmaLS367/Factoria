@@ -111,3 +111,23 @@ def test_cache_cleanup() -> None:
     # The expired key should have been deleted during the write of key2
     assert key1 not in keys
     assert key2 in keys
+
+def test_cache_initializes_missing_directory(tmp_path: Path) -> None:
+    # Set db path to a directory that doesn't exist yet
+    missing_dir = tmp_path / "missing"
+    db_file = missing_dir / "cache.sqlite"
+
+    settings.db_path = str(db_file)
+
+    payload = {"status": "ok"}
+    key = make_cache_key("test", "prov", "mod", payload)
+
+    # Should create directory and table, then insert
+    set_cache(key, "test", "prov", "mod", payload, 10)
+
+    # Verify file exists
+    assert db_file.exists()
+
+    # Verify cache can be retrieved
+    cached = get_cache(key)
+    assert cached == payload
