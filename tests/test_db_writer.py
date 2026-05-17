@@ -17,8 +17,6 @@ def mock_db_writer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "web_search_provider": "mock-provider",
         "db_path": str(db_path)
     })()
-
-    monkeypatch.setattr(db_writer, "DB_PATH", str(db_path))
     monkeypatch.setattr(db_writer, "settings", mock_settings)
 
     db_writer._CURRENT_RUN_ID = None

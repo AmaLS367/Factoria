@@ -11,7 +11,7 @@ from backend.agents.research_agent import ResearchAgent, ensure_sources_field
 from backend.config import settings
 from backend.main import main as run_excel_job
 from backend.tools.web_search import WebSearchTool
-from backend.utils.db_writer import DB_PATH, fetch_all, init_db, save_results_bulk
+from backend.utils.db_writer import fetch_all, get_db_path, init_db, save_results_bulk
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -29,8 +29,8 @@ class CollectRequest(BaseModel):
 def health() -> dict[str, Any]:
     db_status = "ok"
     try:
-        if os.path.exists(DB_PATH):
-            conn = sqlite3.connect(DB_PATH)
+        if os.path.exists(get_db_path()):
+            conn = sqlite3.connect(get_db_path())
             conn.execute("SELECT 1")
             conn.close()
         else:
@@ -125,7 +125,7 @@ def list_items(limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
     if offset < 0:
         raise HTTPException(status_code=400, detail="offset must be >= 0")
 
-    if not os.path.exists(DB_PATH):
+    if not os.path.exists(get_db_path()):
         return []
     df = fetch_all()
     if df is None or df.empty:

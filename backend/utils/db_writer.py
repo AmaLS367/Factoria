@@ -9,15 +9,16 @@ from utils.migrations import run_migrations
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = os.path.abspath(settings.db_path)
+def get_db_path() -> str:
+    return str(os.path.abspath(settings.db_path))
 
 _CURRENT_RUN_ID: int | None = None
 SOURCES_FIELD_NAME = "Sources"
 
 
 def init_db(fields: list[str]) -> None:
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    os.makedirs(os.path.dirname(get_db_path()), exist_ok=True)
+    conn = sqlite3.connect(get_db_path())
     conn.execute("PRAGMA foreign_keys = ON")
     try:
         run_migrations(conn, settings.column_name, fields)
@@ -39,11 +40,11 @@ def init_db(fields: list[str]) -> None:
 
     finally:
         conn.close()
-    logger.info(f"Database initialized at {DB_PATH}")
+    logger.info(f"Database initialized at {get_db_path()}")
 
 
 def detail_exists(item_id: str) -> bool:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(get_db_path())
     conn.execute("PRAGMA foreign_keys = ON")
     cur = conn.cursor()
     cur.execute(
@@ -61,7 +62,7 @@ def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> No
     if not data_list:
         return
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(get_db_path())
     conn.execute("PRAGMA foreign_keys = ON")
     cur = conn.cursor()
 
@@ -128,7 +129,7 @@ def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> No
         conn.close()
 
 def fetch_all() -> pd.DataFrame | None:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(get_db_path())
     conn.execute("PRAGMA foreign_keys = ON")
     try:
         # Fetch items
