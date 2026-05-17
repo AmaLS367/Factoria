@@ -37,7 +37,9 @@ class ResearchAgent:
         self.llm_client = llm_client or LLMClient()
         self.search_tool = search_tool or WebSearchTool()
 
-    def collect_item(self, item_id: str, fields: list[str] | None = None) -> dict[str, str]:
+    def collect_item_with_confidence(
+        self, item_id: str, fields: list[str] | None = None
+    ) -> tuple[dict[str, str], dict[str, float | None]]:
         output_fields = ensure_sources_field(fields or settings.target_fields)
         query = build_search_query(item_id, settings.item_label, output_fields)
         search_results = self.search_tool.search(query)
@@ -53,7 +55,8 @@ class ResearchAgent:
         provider = settings.resolved_llm_provider
         model = settings.resolved_llm_model
 
-        parsed = None
+        values = None
+        confidence: dict[str, float | None] | None = None
         cache_key = None
 
         if use_cache:
@@ -69,16 +72,25 @@ class ResearchAgent:
             cached_parsed = get_cache(cache_key)
             if cached_parsed is not None and isinstance(cached_parsed, dict):
                 logger.info(f"LLM extract cache hit for item: {item_id}")
-                parsed = {str(k): str(v) for k, v in cached_parsed.items()}
+                if "values" in cached_parsed and "confidence" in cached_parsed:
+                    values = {str(k): str(v) for k, v in cached_parsed["values"].items()}
+                    confidence = {
+                        str(k): float(v) if v is not None else None
+                        for k, v in cached_parsed["confidence"].items()
+                    }
+                else:
+                    # Legacy cache flat format
+                    values = {str(k): str(v) for k, v in cached_parsed.items()}
+                    confidence = {k: None for k in values}
 
-        if parsed is None:
+        if values is None or confidence is None:
             raw_response = self.llm_client.get_answer(prompt)
-            parsed = parse_answer(raw_response, output_fields)
+            values, confidence = parse_answer(raw_response, output_fields)
 
             if use_cache and cache_key is not None:
                 has_extracted_data = any(
                     v not in {None, "", "Not found"}
-                    for k, v in parsed.items()
+                    for k, v in values.items()
                     if k != SOURCES_FIELD
                 )
 
@@ -89,14 +101,19 @@ class ResearchAgent:
                         kind="llm_extract",
                         provider=provider,
                         model=model,
-                        payload=parsed,
+                        payload={"values": values, "confidence": confidence},
                         ttl_days=settings.cache_llm_ttl_days,
                     )
 
-        if parsed.get(SOURCES_FIELD) in {None, "", "Not found"}:
-            parsed[SOURCES_FIELD] = format_sources(search_results)
+        if values.get(SOURCES_FIELD) in {None, "", "Not found"}:
+            values[SOURCES_FIELD] = format_sources(search_results)
 
-        return {k: v if v is not None else "" for k, v in parsed.items()}
+        final_values = {k: v if v is not None else "" for k, v in values.items()}
+        return final_values, confidence
+
+    def collect_item(self, item_id: str, fields: list[str] | None = None) -> dict[str, str]:
+        values, _ = self.collect_item_with_confidence(item_id, fields)
+        return values
 
 
 def ensure_sources_field(fields: list[str]) -> list[str]:

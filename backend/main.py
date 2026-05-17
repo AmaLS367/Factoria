@@ -139,6 +139,7 @@ def main(
 
     agent = ResearchAgent()
     buffer: list[tuple[str, ...]] = []
+    batch_confidence: list[dict[str, float | None]] = []
     existing_ids = get_all_existing_ids()
     try:
         col_idx = list(df.columns).index(effective_column) + 1
@@ -172,17 +173,21 @@ def main(
                     continue
 
                 try:
-                    parsed = agent.collect_item(item_id, output_fields)
+                    parsed, conf = agent.collect_item_with_confidence(item_id, output_fields)
                     row_data = prepare_row_data(item_id, parsed, output_fields)
                     buffer.append(row_data)
+                    batch_confidence.append(conf)
                     processed_in_batch += 1
                 except Exception as e:
                     logger.error(f"Failed processing item {item_id}: {e}")
                     failed_in_batch += 1
 
             if buffer:
-                save_results_bulk(buffer, output_fields, run_id=current_run_id)
+                save_results_bulk(
+                    buffer, output_fields, run_id=current_run_id, confidence_list=batch_confidence
+                )
                 buffer.clear()
+                batch_confidence.clear()
 
             if job_id:
                 update_job_progress(

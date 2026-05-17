@@ -226,6 +226,15 @@ def test_batch_main_uses_research_agent_and_persists_sources(
     initialized_fields: list[str] = []
 
     class FakeResearchAgent:
+        def collect_item_with_confidence(
+            self, item_id: str, fields: list[str] | None = None
+        ) -> tuple[dict[str, str], dict[str, float | None]]:
+            assert fields == ["Name", "Sources"]
+            return {"Name": f"Name {item_id}", "Sources": "https://example.com"}, {
+                "Name": 1.0,
+                "Sources": 1.0,
+            }
+
         def collect_item(self, item_id: str, fields: list[str] | None = None) -> dict[str, str]:
             assert fields == ["Name", "Sources"]
             return {"Name": f"Name {item_id}", "Sources": "https://example.com"}
@@ -244,7 +253,9 @@ def test_batch_main_uses_research_agent_and_persists_sources(
         batch_main, "init_db", lambda flds, create_default_run=True: initialized_fields.extend(flds)
     )
     monkeypatch.setattr(
-        batch_main, "save_results_bulk", lambda data, fields, run_id=None: saved.extend(data)
+        batch_main,
+        "save_results_bulk",
+        lambda data, fields, run_id=None, confidence_list=None: saved.extend(data),
     )
     monkeypatch.setattr(batch_main, "fetch_all", lambda run_id=None: None)
     monkeypatch.setattr(batch_main, "format_output_excel", lambda filepath, df: None)
