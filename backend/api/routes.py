@@ -29,8 +29,9 @@ class CollectRequest(BaseModel):
 def health() -> dict[str, Any]:
     db_status = "ok"
     try:
-        if os.path.exists(get_db_path()):
-            conn = sqlite3.connect(get_db_path())
+        db_path = get_db_path()
+        if os.path.exists(db_path):
+            conn = sqlite3.connect(db_path)
             conn.execute("SELECT 1")
             conn.close()
         else:
@@ -39,11 +40,7 @@ def health() -> dict[str, Any]:
         logger.error(f"DB Health check failed: {e}")
         db_status = "error"
 
-    return {
-        "status": "ok",
-        "app": "AI Data Collector API",
-        "db": db_status
-    }
+    return {"status": "ok", "app": "AI Data Collector API", "db": db_status}
 
 
 @router.get("/settings")
@@ -87,7 +84,7 @@ def collect_item(request: CollectRequest) -> dict[str, Any]:
     # Convert data dict back to tuple order for save_results_bulk
     row_data = (
         item_id,
-        *[data.get(f, "Not found") for f in output_fields if f != settings.column_name]
+        *[data.get(f, "Not found") for f in output_fields if f != settings.column_name],
     )
 
     try:
@@ -108,8 +105,10 @@ def start_excel_job() -> dict[str, str]:
 
         run_excel_job()
 
-        if not os.path.exists(settings.output_file) \
-                or os.path.getmtime(settings.output_file) <= prev_mtime:
+        if (
+            not os.path.exists(settings.output_file)
+            or os.path.getmtime(settings.output_file) <= prev_mtime
+        ):
             raise Exception("Excel workflow did not produce or update the expected output file.")
 
         return {"status": "completed", "output_path": settings.output_file}
@@ -125,14 +124,15 @@ def list_items(limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
     if offset < 0:
         raise HTTPException(status_code=400, detail="offset must be >= 0")
 
-    if not os.path.exists(get_db_path()):
+    db_path = get_db_path()
+    if not os.path.exists(db_path):
         return []
     df = fetch_all()
     if df is None or df.empty:
         return []
     # Replace NaN with None
     records = df.where(df.notna(), None).to_dict(orient="records")
-    records = records[offset:offset+limit]
+    records = records[offset : offset + limit]
     return [dict(r) for r in records]
 
 
@@ -141,7 +141,7 @@ def export_latest() -> Any:
     if os.path.exists(settings.output_file):
         return FileResponse(
             settings.output_file,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
     return JSONResponse(status_code=404, content={"detail": "Export file not found"})

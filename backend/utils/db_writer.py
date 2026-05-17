@@ -3,48 +3,66 @@ import os
 import sqlite3
 
 import pandas as pd
-from config import settings
 
-from utils.migrations import run_migrations
+from backend.config import settings
+from backend.utils.migrations import run_migrations
 
 logger = logging.getLogger(__name__)
 
+
 def get_db_path() -> str:
-    return str(os.path.abspath(settings.db_path))
+    return os.path.abspath(settings.db_path)
+
 
 _CURRENT_RUN_ID: int | None = None
+_CURRENT_RUN_DB_PATH: str | None = None
 SOURCES_FIELD_NAME = "Sources"
 
 
 def init_db(fields: list[str]) -> None:
-    os.makedirs(os.path.dirname(get_db_path()), exist_ok=True)
-    conn = sqlite3.connect(get_db_path())
+    db_path = get_db_path()
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON")
     try:
         run_migrations(conn, settings.column_name, fields)
         conn.commit()
 
         # Create or fetch a run for this session
-        global _CURRENT_RUN_ID
-        if _CURRENT_RUN_ID is None:
+        global _CURRENT_RUN_DB_PATH, _CURRENT_RUN_ID
+        current_run_exists = False
+        if _CURRENT_RUN_ID is not None and _CURRENT_RUN_DB_PATH == db_path:
+            current_run_exists = (
+                conn.execute("SELECT 1 FROM runs WHERE id = ?", (_CURRENT_RUN_ID,)).fetchone()
+                is not None
+            )
+
+        if not current_run_exists:
             cur = conn.cursor()
             cur.execute(
                 """
                 INSERT INTO runs (input_file, output_file, model_name, web_search_provider)
                 VALUES (?, ?, ?, ?)
                 """,
-                (settings.input_file, settings.output_file, settings.model_name, settings.web_search_provider)  # noqa: E501
+                (
+                    settings.input_file,
+                    settings.output_file,
+                    settings.model_name,
+                    settings.web_search_provider,
+                ),  # noqa: E501
             )
             _CURRENT_RUN_ID = cur.lastrowid
+            _CURRENT_RUN_DB_PATH = db_path
             conn.commit()
 
     finally:
         conn.close()
-    logger.info(f"Database initialized at {get_db_path()}")
+    logger.info(f"Database initialized at {db_path}")
 
 
 def detail_exists(item_id: str) -> bool:
-    conn = sqlite3.connect(get_db_path())
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON")
     cur = conn.cursor()
     cur.execute(
@@ -58,22 +76,29 @@ def detail_exists(item_id: str) -> bool:
     conn.close()
     return result is not None
 
+
 def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> None:
     if not data_list:
         return
 
-    conn = sqlite3.connect(get_db_path())
+    db_path = get_db_path()
+    if _CURRENT_RUN_ID is None or _CURRENT_RUN_DB_PATH != db_path:
+        raise RuntimeError(
+            "save_results_bulk called before init_db for the current database path; "
+            "_CURRENT_RUN_ID is not set."
+        )
+
+    conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON")
     cur = conn.cursor()
-
-    if _CURRENT_RUN_ID is None:
-        raise RuntimeError("save_results_bulk called before init_db; _CURRENT_RUN_ID is not set.")
 
     all_fields = [settings.column_name] + [f for f in fields if f != settings.column_name]
 
     for row_data in data_list:
         if len(row_data) < len(all_fields):
-            raise ValueError(f"Row data length ({len(row_data)}) is less than fields length ({len(all_fields)}).")  # noqa: E501
+            raise ValueError(
+                f"Row data length ({len(row_data)}) is less than fields length ({len(all_fields)})."
+            )  # noqa: E501
 
     try:
         for row_data in data_list:
@@ -86,7 +111,7 @@ def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> No
                     INSERT INTO items (run_id, identifier_column, identifier_value)
                     VALUES (?, ?, ?)
                     """,
-                    (_CURRENT_RUN_ID, settings.column_name, item_id)
+                    (_CURRENT_RUN_ID, settings.column_name, item_id),
                 )
                 db_item_id = cur.lastrowid
             except sqlite3.IntegrityError:
@@ -110,7 +135,7 @@ def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> No
                                 INSERT INTO item_sources (item_id, title, url, snippet, provider)
                                 VALUES (?, ?, ?, ?, ?)
                                 """,
-                                (db_item_id, "", url, "", "legacy")
+                                (db_item_id, "", url, "", "legacy"),
                             )
                 else:
                     cur.execute(
@@ -118,7 +143,7 @@ def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> No
                         INSERT INTO item_fields (item_id, field_name, field_value)
                         VALUES (?, ?, ?)
                         """,
-                        (db_item_id, field_name, field_value)
+                        (db_item_id, field_name, field_value),
                     )
 
         conn.commit()
@@ -128,8 +153,10 @@ def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> No
     finally:
         conn.close()
 
+
 def fetch_all() -> pd.DataFrame | None:
-    conn = sqlite3.connect(get_db_path())
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON")
     try:
         # Fetch items
@@ -140,10 +167,14 @@ def fetch_all() -> pd.DataFrame | None:
         items_df = items_df.rename(columns={"identifier_value": settings.column_name})
 
         # Fetch fields
-        fields_df = pd.read_sql_query("SELECT item_id, field_name, field_value FROM item_fields", conn)  # noqa: E501
+        fields_df = pd.read_sql_query(
+            "SELECT item_id, field_name, field_value FROM item_fields", conn
+        )  # noqa: E501
 
         if not fields_df.empty:
-            pivoted = fields_df.pivot(index="item_id", columns="field_name", values="field_value").reset_index()  # noqa: E501
+            pivoted = fields_df.pivot(
+                index="item_id", columns="field_name", values="field_value"
+            ).reset_index()  # noqa: E501
             # Merge items and fields
             merged = items_df.merge(pivoted, left_on="id", right_on="item_id", how="left")
             merged = merged.drop(columns=["item_id"])
@@ -154,7 +185,11 @@ def fetch_all() -> pd.DataFrame | None:
         sources_df = pd.read_sql_query("SELECT item_id, url FROM item_sources", conn)
         if not sources_df.empty:
             # Group by item_id and join URLs with newline
-            sources_grouped = sources_df.groupby("item_id")["url"].apply(lambda urls: "\n".join(dict.fromkeys(urls))).reset_index()  # noqa: E501
+            sources_grouped = (
+                sources_df.groupby("item_id")["url"]
+                .apply(lambda urls: "\n".join(dict.fromkeys(urls)))
+                .reset_index()
+            )  # noqa: E501
             sources_grouped = sources_grouped.rename(columns={"url": SOURCES_FIELD_NAME})
 
             # Merge sources
