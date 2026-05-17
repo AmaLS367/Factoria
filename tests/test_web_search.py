@@ -1,5 +1,4 @@
 import json
-import sys
 from typing import Any, cast
 
 import cli
@@ -174,7 +173,7 @@ def test_cli_search_mode_outputs_json(
             return [SearchResult(title="Title", url="https://example.com", snippet="Text")]
 
     monkeypatch.setattr(cli, "WebSearchTool", FakeWebSearchTool)
-    monkeypatch.setattr(sys, "argv", ["cli.py", "--search", "ABC-123"])
+    monkeypatch.setattr("sys.argv", ["cli.py", "--search", "ABC-123"])
 
     cli.main()
 
