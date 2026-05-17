@@ -244,3 +244,25 @@ def test_batch_main_uses_research_agent_and_persists_sources(
 
     assert initialized_fields == ensure_sources_field(["Name"])
     assert saved == [("ABC-123", "Name ABC-123", "https://example.com")]
+
+
+def test_web_search_tool_handles_provider_exceptions(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    from tools.web_search import DdgsSearchProvider, WebSearchTool
+
+    def fake_search_raises(*args: object, **kwargs: object) -> list[SearchResult]:
+        raise RuntimeError("Mock provider failure")
+
+    monkeypatch.setattr(DdgsSearchProvider, "search", fake_search_raises)
+
+    tool = WebSearchTool(provider="ddgs", enabled=True)
+
+    with caplog.at_level(logging.WARNING):
+        results = tool.search("test query")
+
+    assert results == []
+    assert "Web search failed for query" in caplog.text
+    assert "Mock provider failure" in caplog.text
