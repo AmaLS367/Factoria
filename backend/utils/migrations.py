@@ -351,6 +351,10 @@ def create_jobs_table(cur: sqlite3.Cursor, context: MigrationContext) -> None:
     )
 
 
+def add_source_credibility_score(cur: sqlite3.Cursor, _context: MigrationContext) -> None:
+    cur.execute("ALTER TABLE item_sources ADD COLUMN credibility_score REAL")
+
+
 def add_job_import_config(cur: sqlite3.Cursor, _context: MigrationContext) -> None:
     cur.execute("ALTER TABLE jobs ADD COLUMN sheet_name TEXT")
     cur.execute("ALTER TABLE jobs ADD COLUMN column_name TEXT")
@@ -386,4 +390,5 @@ MIGRATIONS = [
     Migration(4, "create_jobs_table", create_jobs_table),
     Migration(5, "create_cache_table", create_cache_table),
     Migration(6, "add_job_import_config", add_job_import_config),
+    Migration(7, "add_source_credibility_score", add_source_credibility_score),
 ]
