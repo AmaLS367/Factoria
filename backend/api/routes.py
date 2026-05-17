@@ -2,9 +2,9 @@ import logging
 import os
 import shutil
 import sqlite3
+import uuid
 from typing import Any
 
-import pandas as pd
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
@@ -92,24 +92,26 @@ def collect_item(request: CollectRequest) -> dict[str, Any]:
 
 @router.post("/jobs/excel")
 async def start_excel_job(
-    background_tasks: BackgroundTasks, file: UploadFile = File(...)  # noqa: B008
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),  # noqa: B008
 ) -> dict[str, str]:  # noqa: B008
     try:
-        os.makedirs(os.path.dirname(settings.input_file) or ".", exist_ok=True)
-        with open(settings.input_file, "wb") as f:
+        job_id = str(uuid.uuid4())
+
+        input_dir = os.path.join("input", "jobs")
+        output_dir = os.path.join("results", "jobs")
+        os.makedirs(input_dir, exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
+
+        job_input_file = os.path.join(input_dir, f"{job_id}.xlsx")
+        job_output_file = os.path.join(output_dir, f"{job_id}.xlsx")
+
+        with open(job_input_file, "wb") as f:
             shutil.copyfileobj(file.file, f)
 
-        try:
-            df = pd.read_excel(settings.input_file, sheet_name=settings.sheet_name)
-            total_items = len(df)
-        except Exception as e:
-            logger.error(f"Failed to read input file: {e}")
-            raise HTTPException(
-                status_code=400, detail="Invalid Excel file or sheet not found"
-            ) from e
-
-        job_id = create_job(settings.input_file, settings.output_file, total_items)
-        background_tasks.add_task(run_excel_job, job_id)
+        # Total items will be calculated by the background worker
+        create_job(job_input_file, job_output_file, 0, job_id=job_id)
+        background_tasks.add_task(run_excel_job, job_id, job_input_file, job_output_file)
 
         return {"job_id": job_id, "status": "queued"}
     except HTTPException:

@@ -10,11 +10,13 @@ from backend.utils.db_writer import get_db_path, init_db
 logger = logging.getLogger(__name__)
 
 
-def create_job(input_file: str, output_file: str, total_items: int) -> str:
+def create_job(
+    input_file: str, output_file: str, total_items: int, job_id: Optional[str] = None
+) -> str:
     # Ensure DB is initialized to have the table
     init_db(settings.target_fields)
 
-    job_id = str(uuid.uuid4())
+    job_id = job_id or str(uuid.uuid4())
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
     try:
@@ -58,7 +60,7 @@ def update_job_status(job_id: str, status: str, error_message: Optional[str] = N
 
         params.append(job_id)
 
-        query = f"UPDATE jobsSET {', '.join(updates)} WHERE job_id = ?"
+        query = f"UPDATE jobs SET {', '.join(updates)} WHERE job_id = ?"
         cur.execute(query, tuple(params))
         conn.commit()
     except Exception as e:
@@ -123,5 +125,18 @@ def get_recent_jobs(limit: int = 10) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error listing jobs: {e}")
         return []
+    finally:
+        conn.close()
+
+
+def update_job_total_items(job_id: str, total_items: int) -> None:
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE jobs SET total_items = ? WHERE job_id = ?", (total_items, job_id))
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Error updating job {job_id} total_items: {e}")
     finally:
         conn.close()
