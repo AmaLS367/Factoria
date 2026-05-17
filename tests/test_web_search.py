@@ -1,5 +1,4 @@
 import json
-import sys
 from typing import Any, cast
 
 import cli
@@ -148,9 +147,7 @@ def test_ddgs_provider_normalizes_results(monkeypatch: pytest.MonkeyPatch) -> No
 
     results = web_search.DdgsSearchProvider(5, 10, "wt-wt").search("part")
 
-    assert results == [
-        SearchResult(title="DDGS", url="https://example.com/ddgs", snippet="Body")
-    ]
+    assert results == [SearchResult(title="DDGS", url="https://example.com/ddgs", snippet="Body")]
 
 
 def test_prompt_includes_web_context_and_sources_field() -> None:
@@ -176,7 +173,7 @@ def test_cli_search_mode_outputs_json(
             return [SearchResult(title="Title", url="https://example.com", snippet="Text")]
 
     monkeypatch.setattr(cli, "WebSearchTool", FakeWebSearchTool)
-    monkeypatch.setattr(sys, "argv", ["cli.py", "--search", "ABC-123"])
+    monkeypatch.setattr("sys.argv", ["cli.py", "--search", "ABC-123"])
 
     cli.main()
 
