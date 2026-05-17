@@ -112,17 +112,15 @@ def test_list_items_empty(mock_fetch_all: MagicMock, mock_exists: MagicMock) -> 
 
 
 @patch("backend.api.routes.os.makedirs")
-@patch("backend.api.routes.os.path.getmtime")
-@patch("backend.api.routes.os.path.exists")
-@patch("backend.api.routes.run_excel_job")
+@patch("backend.api.routes.create_job")
+@patch("backend.api.routes.BackgroundTasks.add_task")
 def test_jobs_excel(
-    mock_run_excel_job: MagicMock,
-    mock_exists: MagicMock,
-    mock_getmtime: MagicMock,
+    mock_add_task: MagicMock,
+    mock_create_job: MagicMock,
     _mock_makedirs: MagicMock,
 ) -> None:
-    mock_exists.return_value = True
-    mock_getmtime.side_effect = [0.0, 1.0]
+
+    mock_create_job.return_value = "test-job-123"
     with patch("builtins.open", mock_open()):
         response = client.post(
             "/jobs/excel",
@@ -130,15 +128,45 @@ def test_jobs_excel(
         )
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] == "completed"
-    assert "output_path" in data
-    mock_run_excel_job.assert_called_once()
+    assert data["status"] == "queued"
+    assert isinstance(data["job_id"], str)
+    assert len(data["job_id"]) == 36
+    mock_add_task.assert_called_once()
+    mock_create_job.assert_called_once()
+
+
+@patch("backend.api.routes.get_recent_jobs")
+def test_get_jobs(mock_get_recent_jobs: MagicMock) -> None:
+    mock_get_recent_jobs.return_value = [{"job_id": "test-123", "status": "completed"}]
+    response = client.get("/jobs")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["job_id"] == "test-123"
+
+
+@patch("backend.api.routes.get_job")
+def test_get_job(mock_get_job: MagicMock) -> None:
+    mock_get_job.return_value = {"job_id": "test-123", "status": "running"}
+    response = client.get("/jobs/test-123")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["job_id"] == "test-123"
+    assert data["status"] == "running"
+
+
+@patch("backend.api.routes.get_job")
+def test_get_job_not_found(mock_get_job: MagicMock) -> None:
+    mock_get_job.return_value = None
+    response = client.get("/jobs/test-123")
+    assert response.status_code == 404
 
 
 @patch("backend.api.routes.os.makedirs")
-@patch("backend.api.routes.run_excel_job")
-def test_jobs_excel_failure(mock_run_excel_job: MagicMock, _mock_makedirs: MagicMock) -> None:
-    mock_run_excel_job.side_effect = Exception("Test Error")
+@patch("backend.api.routes.create_job")
+def test_jobs_excel_failure(mock_create_job: MagicMock, _mock_makedirs: MagicMock) -> None:
+
+    mock_create_job.side_effect = Exception("Test Error")
     with patch("builtins.open", mock_open()):
         response = client.post(
             "/jobs/excel",
@@ -146,7 +174,7 @@ def test_jobs_excel_failure(mock_run_excel_job: MagicMock, _mock_makedirs: Magic
         )
     assert response.status_code == 500
     data = response.json()
-    assert data["detail"] == "Excel job failed"
+    assert data["detail"] == "Failed to queue Excel job"
 
 
 def test_jobs_excel_no_file() -> None:
@@ -155,24 +183,27 @@ def test_jobs_excel_no_file() -> None:
 
 
 @patch("backend.api.routes.os.makedirs")
-@patch("backend.api.routes.os.path.getmtime")
-@patch("backend.api.routes.os.path.exists")
-@patch("backend.api.routes.run_excel_job")
+@patch("backend.api.routes.create_job")
+@patch("backend.api.routes.BackgroundTasks.add_task")
 def test_jobs_excel_saves_input_file(
-    _mock_run_excel_job: MagicMock,
-    mock_exists: MagicMock,
-    mock_getmtime: MagicMock,
+    _mock_add_task: MagicMock,
+    mock_create_job: MagicMock,
     _mock_makedirs: MagicMock,
 ) -> None:
-    mock_exists.return_value = True
-    mock_getmtime.side_effect = [0.0, 1.0]
+
+    mock_create_job.return_value = "test-job-123"
     m = mock_open()
     with patch("builtins.open", m):
-        client.post(
+        response = client.post(
             "/jobs/excel",
             files={"file": ("test.xlsx", _make_xlsx_bytes(), _XLSX_CONTENT_TYPE)},
         )
-    m.assert_any_call(settings.input_file, "wb")
+    job_id = response.json()["job_id"]
+    expected_path = f"input/jobs/{job_id}.xlsx".replace("/", os.sep)
+    # Check if any call matches expected_path
+    calls = m.call_args_list
+    paths = [call.args[0] for call in calls if isinstance(call.args[0], str)]
+    assert any(expected_path in p for p in paths)
 
 
 @patch("backend.api.routes.os.path.exists")
@@ -238,18 +269,59 @@ def test_list_items_pagination_invalid(mock_fetch_all: MagicMock, mock_exists: M
     assert response.status_code == 400
 
 
-@patch("backend.api.routes.os.makedirs")
-@patch("backend.api.routes.os.path.exists")
-@patch("backend.api.routes.run_excel_job")
-def test_jobs_excel_no_output(
-    _mock_run_excel_job: MagicMock, mock_exists: MagicMock, _mock_makedirs: MagicMock
-) -> None:
-    mock_exists.return_value = False
-    with patch("builtins.open", mock_open()):
-        response = client.post(
+@patch("backend.api.routes.BackgroundTasks.add_task")
+def test_jobs_excel_concurrency(mock_add_task: MagicMock) -> None:
+
+    # Test that two different jobs get unique paths
+    m = mock_open()
+    with patch("builtins.open", m):
+        response1 = client.post(
             "/jobs/excel",
-            files={"file": ("test.xlsx", _make_xlsx_bytes(), _XLSX_CONTENT_TYPE)},
+            files={"file": ("test1.xlsx", _make_xlsx_bytes(), _XLSX_CONTENT_TYPE)},
         )
-    assert response.status_code == 500
-    data = response.json()
-    assert "Excel job failed" in data["detail"]
+        response2 = client.post(
+            "/jobs/excel",
+            files={"file": ("test2.xlsx", _make_xlsx_bytes(), _XLSX_CONTENT_TYPE)},
+        )
+
+    assert response1.status_code == 200
+    assert response2.status_code == 200
+
+    job_id1 = response1.json()["job_id"]
+    job_id2 = response2.json()["job_id"]
+
+    assert job_id1 != job_id2
+
+    # Verify open was called with unique paths
+    import os
+
+    calls = m.call_args_list
+    paths = [call.args[0] for call in calls if isinstance(call.args[0], str)]
+    expected1 = f"input/jobs/{job_id1}.xlsx".replace("/", os.sep)
+    expected2 = f"input/jobs/{job_id2}.xlsx".replace("/", os.sep)
+    assert any(expected1 in p for p in paths)
+    assert any(expected2 in p for p in paths)
+
+
+@patch("backend.api.routes.get_job")
+def test_export_latest_uses_job_output(mock_get_job: MagicMock) -> None:
+    # Test that /jobs/{job_id}/export uses job-specific output file
+    job_id = "test-job-123"
+    job_output = f"results/jobs/{job_id}.xlsx"
+    mock_get_job.return_value = {"job_id": job_id, "status": "completed", "output_file": job_output}
+
+    with patch("backend.api.routes.os.path.exists") as mock_exists:
+        mock_exists.return_value = True
+        with patch("backend.api.routes.FileResponse") as mock_file_response:
+            from fastapi.responses import JSONResponse
+
+            mock_file_response.return_value = JSONResponse(content={"fake": "file"})
+
+            response = client.get(f"/jobs/{job_id}/export")
+
+            assert response.status_code == 200
+            mock_file_response.assert_called_once_with(
+                job_output,
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                filename=f"export_{job_id}.xlsx",
+            )
