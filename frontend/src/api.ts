@@ -93,3 +93,17 @@ export async function fetchJob(job_id: string) {
 export function getJobExportUrl(job_id: string) {
   return `${API_BASE_URL}/jobs/${job_id}/export`;
 }
+
+export async function fetchItemSources(identifierValue: string) {
+  const res = await fetch(`${API_BASE_URL}/items/${encodeURIComponent(identifierValue)}/sources`);
+  if (!res.ok) throw new Error('Failed to fetch sources');
+  return res.json();
+}
+
+export async function fetchLogs(lines: number = 200, level: string = '') {
+  const params = new URLSearchParams({ lines: String(lines) });
+  if (level) params.set('level', level);
+  const res = await fetch(`${API_BASE_URL}/logs?${params}`);
+  if (!res.ok) throw new Error('Failed to fetch logs');
+  return res.json();
+}
