@@ -28,7 +28,8 @@ def create_job(
         cur = conn.cursor()
         cur.execute(
             """
-            INSERT INTO jobs (job_id, status, input_file, output_file, total_items, sheet_name, column_name)
+            INSERT INTO jobs
+                (job_id, status, input_file, output_file, total_items, sheet_name, column_name)
             VALUES (?, 'queued', ?, ?, ?, ?, ?)
             """,
             (job_id, input_file, output_file, total_items, sheet_name, column_name),

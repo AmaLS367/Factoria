@@ -193,7 +193,9 @@ def cancel_excel_job(job_id: str) -> dict[str, str]:
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     if job["status"] not in ("queued", "running"):
-        raise HTTPException(status_code=400, detail=f"Cannot cancel job with status '{job['status']}'")
+        raise HTTPException(  # noqa: E501
+            status_code=400, detail=f"Cannot cancel job with status '{job['status']}'"
+        )
     cancel_job(job_id)
     return {"job_id": job_id, "status": "cancelled"}
 
@@ -204,7 +206,9 @@ def retry_excel_job(job_id: str, background_tasks: BackgroundTasks) -> dict[str,
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     if job["status"] not in ("failed", "cancelled"):
-        raise HTTPException(status_code=400, detail=f"Cannot retry job with status '{job['status']}'")
+        raise HTTPException(  # noqa: E501
+            status_code=400, detail=f"Cannot retry job with status '{job['status']}'"
+        )
 
     old_input = job["input_file"]
     if not old_input or not os.path.exists(old_input):

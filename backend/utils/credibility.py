@@ -1,6 +1,5 @@
 from urllib.parse import urlparse
 
-
 TRUSTED_DOMAINS: dict[str, float] = {
     "wikipedia.org": 0.15,
     "iso.org": 0.2,

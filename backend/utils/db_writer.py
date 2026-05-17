@@ -173,7 +173,8 @@ def save_results_bulk(
                         for url in urls:
                             cur.execute(
                                 """
-                                INSERT INTO item_sources (item_id, title, url, snippet, provider, credibility_score)
+                                INSERT INTO item_sources
+                                    (item_id, title, url, snippet, provider, credibility_score)
                                 VALUES (?, ?, ?, ?, ?, ?)
                                 """,
                                 (db_item_id, "", url, "", "legacy", score_source(url)),
