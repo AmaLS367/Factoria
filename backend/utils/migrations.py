@@ -328,6 +328,29 @@ def _migrate_legacy_data(cur: sqlite3.Cursor, context: MigrationContext) -> None
                     pass
 
 
+def create_jobs_table(cur: sqlite3.Cursor, context: MigrationContext) -> None:
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS jobs (
+            job_id TEXT PRIMARY KEY,
+            status TEXT NOT NULL DEFAULT 'queued',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            started_at TEXT,
+            finished_at TEXT,
+            total_items INTEGER DEFAULT 0,
+            processed_items INTEGER DEFAULT 0,
+            skipped_items INTEGER DEFAULT 0,
+            failed_items INTEGER DEFAULT 0,
+            error_message TEXT,
+            input_file TEXT,
+            output_file TEXT,
+            run_id INTEGER,
+            FOREIGN KEY(run_id) REFERENCES runs(id)
+        )
+        """
+    )
+
+
 def quote_identifier(identifier: str) -> str:
     return f'"{identifier.replace(chr(34), chr(34) + chr(34))}"'
 
@@ -336,4 +359,5 @@ MIGRATIONS = [
     Migration(1, "create_results_table", create_results_table),
     Migration(2, "sync_configured_result_columns", sync_configured_result_columns),
     Migration(3, "create_normalized_tables", create_normalized_tables),
+    Migration(4, "create_jobs_table", create_jobs_table),
 ]

@@ -4,7 +4,8 @@ import shutil
 import sqlite3
 from typing import Any
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+import pandas as pd
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
@@ -13,6 +14,7 @@ from backend.config import settings
 from backend.main import main as run_excel_job
 from backend.tools.web_search import WebSearchTool
 from backend.utils.db_writer import fetch_all, get_db_path, save_single_item
+from backend.utils.jobs import create_job, get_job, get_recent_jobs
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -89,28 +91,65 @@ def collect_item(request: CollectRequest) -> dict[str, Any]:
 
 
 @router.post("/jobs/excel")
-async def start_excel_job(file: UploadFile = File(...)) -> dict[str, str]:  # noqa: B008
+async def start_excel_job(
+    background_tasks: BackgroundTasks, file: UploadFile = File(...)  # noqa: B008
+) -> dict[str, str]:  # noqa: B008
     try:
         os.makedirs(os.path.dirname(settings.input_file) or ".", exist_ok=True)
         with open(settings.input_file, "wb") as f:
             shutil.copyfileobj(file.file, f)
 
-        prev_mtime = 0.0
-        if os.path.exists(settings.output_file):
-            prev_mtime = os.path.getmtime(settings.output_file)
+        try:
+            df = pd.read_excel(settings.input_file, sheet_name=settings.sheet_name)
+            total_items = len(df)
+        except Exception as e:
+            logger.error(f"Failed to read input file: {e}")
+            raise HTTPException(
+                status_code=400, detail="Invalid Excel file or sheet not found"
+            ) from e
 
-        run_excel_job()
+        job_id = create_job(settings.input_file, settings.output_file, total_items)
+        background_tasks.add_task(run_excel_job, job_id)
 
-        if (
-            not os.path.exists(settings.output_file)
-            or os.path.getmtime(settings.output_file) <= prev_mtime
-        ):
-            raise Exception("Excel workflow did not produce or update the expected output file.")
-
-        return {"status": "completed", "output_path": settings.output_file}
+        return {"job_id": job_id, "status": "queued"}
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Excel job failed: {e}")
-        raise HTTPException(status_code=500, detail="Excel job failed") from e
+        logger.error(f"Failed to queue Excel job: {e}")
+        raise HTTPException(status_code=500, detail="Failed to queue Excel job") from e
+
+
+@router.get("/jobs")
+def list_jobs() -> list[dict[str, Any]]:
+    return get_recent_jobs(10)
+
+
+@router.get("/jobs/{job_id}")
+def get_job_status(job_id: str) -> dict[str, Any]:
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+@router.get("/jobs/{job_id}/export", response_class=FileResponse, response_model=None)
+def export_job_file(job_id: str) -> Any:
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job["status"] != "completed":
+        raise HTTPException(status_code=400, detail="Job is not completed")
+
+    output_file = job["output_file"]
+    if not output_file or not os.path.exists(output_file):
+        return JSONResponse(status_code=404, content={"detail": "Export file not found"})
+
+    return FileResponse(
+        output_file,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=f"export_{job_id}.xlsx",
+    )
 
 
 @router.get("/items")
