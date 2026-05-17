@@ -6,6 +6,7 @@ import pytest
 from backend.config import settings
 from backend.utils.cache import (
     _deterministic_json_dumps,
+    _ensure_cache_table,
     _get_connection,
     get_cache,
     make_cache_key,
@@ -18,10 +19,6 @@ def setup_db(tmp_path: Path) -> Generator[None, None, None]:
     # Override settings path to avoid polluting actual test db
     original_db_path = settings.db_path
     settings.db_path = str(tmp_path / "test_db.sqlite")
-
-    with _get_connection():
-        pass  # cache table init is lazy now
-
     yield
     settings.db_path = original_db_path
 
@@ -74,8 +71,6 @@ def test_corrupted_cache() -> None:
 
     # Corrupt the json directly in the db
     with _get_connection() as conn:
-        from backend.utils.cache import _ensure_cache_table
-
         _ensure_cache_table(conn)
         cur = conn.cursor()
         cur.execute(
@@ -101,8 +96,6 @@ def test_cache_cleanup() -> None:
     set_cache(key2, "test", "prov", "mod", payload2, 1)
 
     with _get_connection() as conn:
-        from backend.utils.cache import _ensure_cache_table
-
         _ensure_cache_table(conn)
         cur = conn.cursor()
         cur.execute("SELECT cache_key FROM cache_entries")
