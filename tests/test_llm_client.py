@@ -158,3 +158,23 @@ def test_ollama_provider_error(mock_requests: Any, mock_settings: Any) -> None:
     client = LLMClient()
     answer = client.get_answer("user prompt")
     assert answer == ""
+
+
+@patch("clients.llm_client.OpenAI")
+@patch("clients.llm_client.settings")
+def test_llm_client_fallback_to_openai_for_unknown_provider(
+    mock_settings: Any, mock_openai: Any
+) -> None:
+    """
+    Since LLMClient falls back to OpenAICompatibleProvider for unknown providers rather than
+    raising an error, we test that behavior explicitly.
+    """
+    mock_settings.resolved_llm_provider = "unknown-provider"
+    mock_settings.resolved_llm_api_key = "test_key"
+    mock_settings.resolved_llm_base_url = "test_url"
+    mock_settings.resolved_llm_model = "test_model"
+
+    client = LLMClient()
+
+    assert client.provider.__class__.__name__ == "OpenAICompatibleProvider"
+    mock_openai.assert_called_once_with(api_key="test_key", base_url="test_url")
