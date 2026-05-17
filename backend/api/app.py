@@ -6,9 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.api.routes import router
 
 _file_handler = logging.FileHandler("collector.log")
-_file_handler.setFormatter(
-    logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-)
+_file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
 logging.getLogger().addHandler(_file_handler)
 logging.getLogger().setLevel(logging.INFO)
 
