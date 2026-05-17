@@ -45,6 +45,7 @@ def format_output_excel(filepath: str, df: pd.DataFrame | None) -> None:
     for row in dataframe_to_rows(df, index=False, header=True):
         ws.append(row)
 
+    wrap_alignment = Alignment(wrap_text=True, vertical="top")
     for col in ws.columns:
         column_idx = col[0].column
         if not isinstance(column_idx, int):
@@ -53,7 +54,7 @@ def format_output_excel(filepath: str, df: pd.DataFrame | None) -> None:
         max_length = 0
         col_letter = get_column_letter(column_idx)
         for cell in col:
-            cell.alignment = Alignment(wrap_text=True, vertical="top")
+            cell.alignment = wrap_alignment
             if cell.value:
                 max_length = max(max_length, len(str(cell.value)))
         ws.column_dimensions[col_letter].width = min(max_length * 1.1, 60)
