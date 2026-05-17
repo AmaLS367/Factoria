@@ -84,8 +84,11 @@ def main() -> None:
     for start in range(0, len(df), settings.batch_size):
         batch_df = df.iloc[start : start + settings.batch_size]
 
-        for _, row in tqdm(batch_df.iterrows(), total=len(batch_df), desc="Processing batch"):
-            item_id = str(row[settings.column_name])
+        # Get column index for itertuples (add 1 because index is at position 0)
+        col_idx = batch_df.columns.get_loc(settings.column_name) + 1
+
+        for row in tqdm(batch_df.itertuples(), total=len(batch_df), desc="Processing batch"):
+            item_id = str(row[col_idx])
 
             if item_id in existing_ids:
                 logger.debug(f"Skipping {item_id} — already in database")
