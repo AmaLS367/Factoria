@@ -4,9 +4,10 @@ import { Search } from './components/Search';
 import { CollectItem } from './components/CollectItem';
 import { ExcelJob } from './components/ExcelJob';
 import { ItemsTable } from './components/ItemsTable';
-import { Database, Search as SearchIcon, FileSpreadsheet, LayoutDashboard, DownloadCloud, Moon, Sun } from 'lucide-react';
+import { Logs } from './components/Logs';
+import { Database, Search as SearchIcon, FileSpreadsheet, LayoutDashboard, DownloadCloud, Moon, Sun, ScrollText } from 'lucide-react';
 
-type View = 'dashboard' | 'collect' | 'search' | 'excel' | 'items';
+type View = 'dashboard' | 'collect' | 'search' | 'excel' | 'items' | 'logs';
 
 function App() {
   const [currentView, setCurrentView] = useState<View>('dashboard');
@@ -30,6 +31,7 @@ function App() {
     { id: 'search', label: 'Web Search', icon: <SearchIcon className="w-5 h-5 mr-3" /> },
     { id: 'excel', label: 'Excel Job', icon: <FileSpreadsheet className="w-5 h-5 mr-3" /> },
     { id: 'items', label: 'Items Database', icon: <Database className="w-5 h-5 mr-3" /> },
+    { id: 'logs', label: 'Logs', icon: <ScrollText className="w-5 h-5 mr-3" /> },
   ];
 
   return (
@@ -84,6 +86,7 @@ function App() {
           {currentView === 'search' && <Search />}
           {currentView === 'excel' && <ExcelJob />}
           {currentView === 'items' && <ItemsTable />}
+          {currentView === 'logs' && <Logs />}
         </main>
       </div>
     </div>

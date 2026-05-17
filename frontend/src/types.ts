@@ -53,3 +53,25 @@ export interface PreviewResult {
   row_count: number;
   sample_rows: Record<string, unknown>[];
 }
+
+export interface ItemSource {
+  title: string;
+  url: string;
+  snippet: string;
+  provider: string;
+  credibility_score: number | null;
+  retrieved_at: string;
+}
+
+export interface LogEntry {
+  timestamp: string;
+  level: string;
+  logger: string;
+  message: string;
+}
+
+export interface LogsResponse {
+  entries: LogEntry[];
+  total_returned: number;
+  file: string;
+}
