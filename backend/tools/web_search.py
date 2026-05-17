@@ -168,7 +168,6 @@ class WebSearchTool:
                     kind="web_search",
                     provider=provider_name,
                     model="N/A",
-                    input_hash=cache_key,
                     payload=results_dict,
                     ttl_days=settings.cache_web_search_ttl_days,
                 )
