@@ -26,16 +26,36 @@ def make_cache_key(kind: str, provider: str, model: str, payload: Any) -> str:
     return hashlib.sha256(key_str.encode("utf-8")).hexdigest()
 
 
+def _ensure_cache_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS cache_entries (
+            cache_key TEXT PRIMARY KEY,
+            kind TEXT NOT NULL,
+            provider TEXT,
+            model TEXT,
+            payload_json TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at TEXT
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cache_kind_expires_at ON cache_entries (kind, expires_at)"
+    )
+
+
 def _get_connection() -> sqlite3.Connection:
     """Get a database connection for cache operations."""
     db_path = get_db_path()
-    return sqlite3.connect(db_path)
+    return sqlite3.connect(db_path, timeout=20.0)
 
 
 def get_cache(cache_key: str) -> Union[Dict[str, Any], List[Any], None]:
     """Retrieve an entry from the cache, if it exists and is not expired."""
     try:
         with _get_connection() as conn:
+            _ensure_cache_table(conn)
             cur = conn.cursor()
             cur.execute(
                 """
@@ -83,23 +103,24 @@ def set_cache(
     kind: str,
     provider: str,
     model: str,
-    input_hash: str,
     payload: Any,
     ttl_days: int,
 ) -> None:
     """Store an entry in the cache."""
     try:
-        payload_json = json.dumps(payload)
+        payload_json = _deterministic_json_dumps(payload)
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(days=ttl_days)
 
         with _get_connection() as conn:
+            _ensure_cache_table(conn)
             cur = conn.cursor()
+            cur.execute("DELETE FROM cache_entries WHERE expires_at < ?", (now.isoformat(),))
             cur.execute(
                 """
                 INSERT INTO cache_entries
-                (cache_key, kind, provider, model, input_hash, payload_json, created_at, expires_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (cache_key, kind, provider, model, payload_json, created_at, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(cache_key) DO UPDATE SET
                     payload_json=excluded.payload_json,
                     created_at=excluded.created_at,
@@ -110,7 +131,6 @@ def set_cache(
                     kind,
                     provider,
                     model,
-                    input_hash,
                     payload_json,
                     now.isoformat(),
                     expires_at.isoformat(),

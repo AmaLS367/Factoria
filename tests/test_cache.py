@@ -1,5 +1,6 @@
 from pathlib import Path
-from typing import Any, Generator
+from typing import Generator
+
 import pytest
 
 from backend.config import settings
@@ -10,8 +11,6 @@ from backend.utils.cache import (
     make_cache_key,
     set_cache,
 )
-from backend.utils.db_writer import init_db
-from backend.utils.migrations import run_migrations
 
 
 @pytest.fixture(autouse=True)
@@ -19,11 +18,9 @@ def setup_db(tmp_path: Path) -> Generator[None, None, None]:
     # Override settings path to avoid polluting actual test db
     original_db_path = settings.db_path
     settings.db_path = str(tmp_path / "test_db.sqlite")
-    init_db(["field1"], create_default_run=False)
 
-    # Ensure migrations are fully applied (including cache table)
-    with _get_connection() as conn:
-        run_migrations(conn, "field1", ["field1"])
+    with _get_connection():
+        pass  # cache table init is lazy now
 
     yield
     settings.db_path = original_db_path
@@ -53,7 +50,7 @@ def test_set_and_get_cache() -> None:
     payload = {"result": "success"}
     key = make_cache_key("test", "prov", "mod", payload)
 
-    set_cache(key, "test", "prov", "mod", "hash", payload, 1)
+    set_cache(key, "test", "prov", "mod", payload, 10)
 
     cached = get_cache(key)
     assert cached == payload
@@ -63,7 +60,7 @@ def test_expired_cache() -> None:
     payload = {"result": "success"}
     key = make_cache_key("test", "prov", "mod", payload)
 
-    set_cache(key, "test", "prov", "mod", "hash", payload, -1)  # expired 1 day ago
+    set_cache(key, "test", "prov", "mod", payload, -1)  # expired 1 day ago
 
     cached = get_cache(key)
     assert cached is None
@@ -73,10 +70,13 @@ def test_corrupted_cache() -> None:
     payload = {"result": "success"}
     key = make_cache_key("test", "prov", "mod", payload)
 
-    set_cache(key, "test", "prov", "mod", "hash", payload, 1)
+    set_cache(key, "test", "prov", "mod", payload, 1)
 
     # Corrupt the json directly in the db
     with _get_connection() as conn:
+        from backend.utils.cache import _ensure_cache_table
+
+        _ensure_cache_table(conn)
         cur = conn.cursor()
         cur.execute(
             "UPDATE cache_entries SET payload_json = '{corrupted' WHERE cache_key = ?", (key,)
@@ -85,3 +85,29 @@ def test_corrupted_cache() -> None:
 
     cached = get_cache(key)
     assert cached is None
+
+
+def test_cache_cleanup() -> None:
+    payload1 = {"result": "expired"}
+    key1 = make_cache_key("test", "prov", "mod", payload1)
+
+    payload2 = {"result": "valid"}
+    key2 = make_cache_key("test", "prov", "mod", payload2)
+
+    # Insert an expired entry
+    set_cache(key1, "test", "prov", "mod", payload1, -1)
+
+    # Insert a valid entry which should trigger cleanup
+    set_cache(key2, "test", "prov", "mod", payload2, 1)
+
+    with _get_connection() as conn:
+        from backend.utils.cache import _ensure_cache_table
+
+        _ensure_cache_table(conn)
+        cur = conn.cursor()
+        cur.execute("SELECT cache_key FROM cache_entries")
+        keys = {row[0] for row in cur.fetchall()}
+
+    # The expired key should have been deleted during the write of key2
+    assert key1 not in keys
+    assert key2 in keys
