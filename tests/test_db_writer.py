@@ -332,3 +332,35 @@ def test_run_isolation(mock_db_writer: Path) -> None:
     df_all = db_writer.fetch_all()
     assert df_all is not None
     assert len(df_all) == 2
+
+
+def test_save_results_bulk_with_confidence(mock_db_writer: Path) -> None:
+    db_writer.init_db(["Name", "Color"])
+    data_list = [("A", "Apple", "Red"), ("B", "Banana", "Yellow")]
+    conf_list = [{"Name": 0.9, "Color": 0.8}, {"Name": 1.0, "Color": 0.5}]
+
+    db_writer.save_results_bulk(data_list, ["Name", "Color"], confidence_list=conf_list)
+
+    conn = sqlite3.connect(mock_db_writer)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            """SELECT item_id, field_name, field_value, confidence
+FROM item_fields ORDER BY item_id, field_name"""
+        ).fetchall()
+
+        results = [dict(row) for row in rows]
+
+        # Item 1 (A)
+        assert results[0]["field_name"] == "Color"
+        assert results[0]["confidence"] == 0.8
+        assert results[1]["field_name"] == "Name"
+        assert results[1]["confidence"] == 0.9
+
+        # Item 2 (B)
+        assert results[2]["field_name"] == "Color"
+        assert results[2]["confidence"] == 0.5
+        assert results[3]["field_name"] == "Name"
+        assert results[3]["confidence"] == 1.0
+    finally:
+        conn.close()
