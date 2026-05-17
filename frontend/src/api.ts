@@ -1,3 +1,5 @@
+import type { ItemField } from "./types";
+
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
@@ -120,8 +122,6 @@ export async function fetchLogs(lines: number = 200, level: string = "") {
   if (!res.ok) throw new Error("Failed to fetch logs");
   return res.json();
 }
-
-import type { ItemField } from "./types";
 
 export async function fetchItemFields(
   identifierValue: string,

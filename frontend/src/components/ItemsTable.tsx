@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { fetchItems, fetchItemSources } from "../api";
-import type { ItemSource } from "../types";
+import { fetchItems, fetchItemSources, fetchItemFields } from "../api";
+import type { ItemSource, ItemField } from "../types";
 import { Card } from "./Card";
-import { ChevronLeft, ChevronRight, Loader2, Link, X } from "lucide-react";
+import { BarChart2, ChevronLeft, ChevronRight, Loader2, Link, X } from "lucide-react";
 
 const PAGE_SIZE = 50;
 
