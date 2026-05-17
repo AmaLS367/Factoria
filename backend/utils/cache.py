@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Union, cast
@@ -48,6 +49,7 @@ def _ensure_cache_table(conn: sqlite3.Connection) -> None:
 def _get_connection() -> sqlite3.Connection:
     """Get a database connection for cache operations."""
     db_path = get_db_path()
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
     return sqlite3.connect(db_path, timeout=20.0)
 
 
