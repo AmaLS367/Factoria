@@ -32,8 +32,7 @@ def run_migrations(
     ensure_migration_table(cur)
 
     applied_versions = {
-        int(row[0])
-        for row in cur.execute("SELECT version FROM schema_migrations").fetchall()
+        int(row[0]) for row in cur.execute("SELECT version FROM schema_migrations").fetchall()
     }
 
     for migration in MIGRATIONS:
@@ -73,7 +72,7 @@ def create_results_table(cur: sqlite3.Cursor, context: MigrationContext) -> None
     seen = set()
     for col in columns:
         c = col.split(" ")[0].strip('"')
-        if c.lower() == 'id':
+        if c.lower() == "id":
             # Skip if it conflicts with `id INTEGER PRIMARY KEY`
             continue
         if c not in seen:
@@ -84,7 +83,7 @@ def create_results_table(cur: sqlite3.Cursor, context: MigrationContext) -> None
         f"""
         CREATE TABLE IF NOT EXISTS results (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            {', '.join(unique_columns)}
+            {", ".join(unique_columns)}
         )
         """
     )
@@ -92,17 +91,15 @@ def create_results_table(cur: sqlite3.Cursor, context: MigrationContext) -> None
 
 def sync_configured_result_columns(cur: sqlite3.Cursor, context: MigrationContext) -> None:
     # Check if results exists first
-    table_exists = cur.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='results'"
-    ).fetchone() is not None
+    table_exists = (
+        cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='results'").fetchone()
+        is not None
+    )
 
     if not table_exists:
         return
 
-    existing_columns = {
-        str(row[1])
-        for row in cur.execute("PRAGMA table_info(results)").fetchall()
-    }
+    existing_columns = {str(row[1]) for row in cur.execute("PRAGMA table_info(results)").fetchall()}
 
     for field in dict.fromkeys([context.identifier_column, *context.fields]):
         if field.lower() == "id" or field in existing_columns:
@@ -115,7 +112,7 @@ def sync_configured_result_columns(cur: sqlite3.Cursor, context: MigrationContex
 
 
 def ensure_identifier_index(cur: sqlite3.Cursor, identifier_column: str) -> None:
-    if identifier_column.lower() == 'id':
+    if identifier_column.lower() == "id":
         return
     index_name = f"idx_results_{identifier_column}_unique"
     try:
@@ -128,19 +125,24 @@ def ensure_identifier_index(cur: sqlite3.Cursor, identifier_column: str) -> None
 
 
 def rename_legacy_table(cur: sqlite3.Cursor) -> bool:
-    table_exists = cur.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='results'"
-    ).fetchone() is not None
+    table_exists = (
+        cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='results'").fetchone()
+        is not None
+    )
 
-    legacy_exists = cur.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='legacy_results'"
-    ).fetchone() is not None
+    legacy_exists = (
+        cur.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='legacy_results'"
+        ).fetchone()
+        is not None
+    )
 
     if table_exists and not legacy_exists:
         cur.execute("ALTER TABLE results RENAME TO legacy_results")
         return True
 
     return legacy_exists
+
 
 def create_runs_table(cur: sqlite3.Cursor) -> None:
     cur.execute(
@@ -157,6 +159,7 @@ def create_runs_table(cur: sqlite3.Cursor) -> None:
         )
         """
     )
+
 
 def create_items_table(cur: sqlite3.Cursor) -> None:
     cur.execute(
@@ -177,6 +180,7 @@ def create_items_table(cur: sqlite3.Cursor) -> None:
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_items_identifier ON items (identifier_column, identifier_value)"  # noqa: E501
     )
 
+
 def create_item_fields_table(cur: sqlite3.Cursor) -> None:
     cur.execute(
         """
@@ -196,6 +200,7 @@ def create_item_fields_table(cur: sqlite3.Cursor) -> None:
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_item_fields_item_id_name ON item_fields (item_id, field_name)"  # noqa: E501
     )
 
+
 def create_item_sources_table(cur: sqlite3.Cursor) -> None:
     cur.execute(
         """
@@ -212,6 +217,7 @@ def create_item_sources_table(cur: sqlite3.Cursor) -> None:
         """
     )
 
+
 def create_normalized_tables(cur: sqlite3.Cursor, context: MigrationContext) -> None:
     should_migrate = rename_legacy_table(cur)
 
@@ -222,6 +228,7 @@ def create_normalized_tables(cur: sqlite3.Cursor, context: MigrationContext) -> 
 
     if should_migrate:
         _migrate_legacy_data(cur, context)
+
 
 def _migrate_legacy_data(cur: sqlite3.Cursor, context: MigrationContext) -> None:
     # 1. Create or fetch a dummy run for legacy data
@@ -245,11 +252,13 @@ def _migrate_legacy_data(cur: sqlite3.Cursor, context: MigrationContext) -> None
     id_col = context.identifier_column
 
     # If ID was the identifier_column but skipped in the results creation due to lowercase `id` matching  # noqa: E501
-    if id_col not in columns and id_col.lower() == 'id':
-        id_col = 'id'
+    if id_col not in columns and id_col.lower() == "id":
+        id_col = "id"
 
     if id_col not in columns:
-        raise RuntimeError(f"Identifier column '{id_col}' not found in legacy_results. Cannot migrate data.")  # noqa: E501
+        raise RuntimeError(
+            f"Identifier column '{id_col}' not found in legacy_results. Cannot migrate data."
+        )  # noqa: E501
 
     fields = [c for c in columns if c not in ["id", id_col]]
 
@@ -275,13 +284,13 @@ def _migrate_legacy_data(cur: sqlite3.Cursor, context: MigrationContext) -> None
                 INSERT INTO items (run_id, identifier_column, identifier_value)
                 VALUES (?, ?, ?)
                 """,
-                (run_id, context.identifier_column, identifier_value)
+                (run_id, context.identifier_column, identifier_value),
             )
             item_id = cur.lastrowid
         except sqlite3.IntegrityError:
             cur.execute(
                 "SELECT id FROM items WHERE identifier_column = ? AND identifier_value = ?",
-                (context.identifier_column, identifier_value)
+                (context.identifier_column, identifier_value),
             )
             item_id = cur.fetchone()[0]
 
@@ -295,14 +304,16 @@ def _migrate_legacy_data(cur: sqlite3.Cursor, context: MigrationContext) -> None
             if field == SOURCES_FIELD_NAME:
                 urls = [u.strip() for u in val_str.split("\n") if u.strip()]
                 for url in urls:
-                    cur.execute("SELECT 1 FROM item_sources WHERE item_id = ? AND url = ?", (item_id, url))  # noqa: E501
+                    cur.execute(
+                        "SELECT 1 FROM item_sources WHERE item_id = ? AND url = ?", (item_id, url)
+                    )  # noqa: E501
                     if not cur.fetchone():
                         cur.execute(
                             """
                             INSERT INTO item_sources (item_id, title, url, snippet, provider)
                             VALUES (?, ?, ?, ?, ?)
                             """,
-                            (item_id, "", url, "", "legacy")
+                            (item_id, "", url, "", "legacy"),
                         )
             else:
                 try:
@@ -311,10 +322,11 @@ def _migrate_legacy_data(cur: sqlite3.Cursor, context: MigrationContext) -> None
                         INSERT INTO item_fields (item_id, field_name, field_value)
                         VALUES (?, ?, ?)
                         """,
-                        (item_id, field, val_str)
+                        (item_id, field, val_str),
                     )
                 except sqlite3.IntegrityError:
                     pass
+
 
 def quote_identifier(identifier: str) -> str:
     return f'"{identifier.replace(chr(34), chr(34) + chr(34))}"'
