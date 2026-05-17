@@ -1,7 +1,9 @@
+import collections
 import csv
 import io
 import logging
 import os
+import re
 import shutil
 import sqlite3
 import uuid
@@ -293,3 +295,70 @@ def export_latest() -> Any:
         )
 
     return JSONResponse(status_code=404, content={"detail": "Export file not found"})
+
+
+@router.get("/items/{identifier_value}/sources")
+def get_item_sources(identifier_value: str) -> list[dict[str, Any]]:
+    db_path = get_db_path()
+    if not os.path.exists(db_path):
+        raise HTTPException(status_code=404, detail="Item not found")
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute(
+            "SELECT id FROM items WHERE identifier_column = ? AND identifier_value = ?",
+            (settings.column_name, identifier_value),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Item not found")
+        item_id = row["id"]
+        sources = conn.execute(
+            """
+            SELECT title, url, snippet, provider, credibility_score, retrieved_at
+            FROM item_sources WHERE item_id = ?
+            ORDER BY credibility_score DESC NULLS LAST
+            """,
+            (item_id,),
+        ).fetchall()
+        return [dict(s) for s in sources]
+    finally:
+        conn.close()
+
+
+_LOG_FILE = "collector.log"
+_LOG_PATTERN = re.compile(
+    r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d+) \[(\w+)\] ([\w.]+): (.+)$"
+)
+
+
+@router.get("/logs")
+def get_logs(lines: int = 200, level: str = "") -> dict[str, Any]:
+    if lines < 1 or lines > 5000:
+        raise HTTPException(status_code=400, detail="lines must be between 1 and 5000")
+
+    if not os.path.exists(_LOG_FILE):
+        return {"entries": [], "total_returned": 0, "file": _LOG_FILE}
+
+    tail: collections.deque[str] = collections.deque(maxlen=lines)
+    with open(_LOG_FILE, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            tail.append(line.rstrip("\n"))
+
+    entries = []
+    for line in tail:
+        m = _LOG_PATTERN.match(line)
+        if m:
+            entry = {
+                "timestamp": m.group(1),
+                "level": m.group(2),
+                "logger": m.group(3),
+                "message": m.group(4),
+            }
+        else:
+            entry = {"timestamp": "", "level": "INFO", "logger": "", "message": line}
+
+        if level and entry["level"] != level.upper():
+            continue
+        entries.append(entry)
+
+    return {"entries": entries, "total_returned": len(entries), "file": _LOG_FILE}

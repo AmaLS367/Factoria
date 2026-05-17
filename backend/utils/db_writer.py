@@ -6,6 +6,7 @@ from typing import Any
 import pandas as pd
 
 from backend.config import settings
+from backend.utils.credibility import score_source
 from backend.utils.migrations import run_migrations
 
 logger = logging.getLogger(__name__)
@@ -172,10 +173,10 @@ def save_results_bulk(
                         for url in urls:
                             cur.execute(
                                 """
-                                INSERT INTO item_sources (item_id, title, url, snippet, provider)
-                                VALUES (?, ?, ?, ?, ?)
+                                INSERT INTO item_sources (item_id, title, url, snippet, provider, credibility_score)
+                                VALUES (?, ?, ?, ?, ?, ?)
                                 """,
-                                (db_item_id, "", url, "", "legacy"),
+                                (db_item_id, "", url, "", "legacy", score_source(url)),
                             )
                 else:
                     cur.execute(
