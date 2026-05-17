@@ -52,3 +52,19 @@ export async function fetchItems(limit: number = 50, offset: number = 0) {
 export function getExportUrl() {
   return `${API_BASE_URL}/export/latest`;
 }
+
+export async function fetchJobs() {
+  const res = await fetch(`${API_BASE_URL}/jobs`);
+  if (!res.ok) throw new Error('Failed to fetch jobs');
+  return res.json();
+}
+
+export async function fetchJob(job_id: string) {
+  const res = await fetch(`${API_BASE_URL}/jobs/${job_id}`);
+  if (!res.ok) throw new Error('Failed to fetch job');
+  return res.json();
+}
+
+export function getJobExportUrl(job_id: string) {
+  return `${API_BASE_URL}/jobs/${job_id}/export`;
+}

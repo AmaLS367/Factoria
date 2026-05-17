@@ -27,3 +27,19 @@ export interface ExcelJobStatus {
   status: string;
   output_path: string;
 }
+
+export interface Job {
+  job_id: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+  created_at: string;
+  started_at?: string;
+  finished_at?: string;
+  total_items: number;
+  processed_items: number;
+  skipped_items: number;
+  failed_items: number;
+  error_message?: string;
+  input_file: string;
+  output_file: string;
+  run_id?: number;
+}
