@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 from backend.agents.research_agent import ResearchAgent, ensure_sources_field
 from backend.config import settings
-from backend.utils.db_writer import detail_exists, fetch_all, init_db, save_results_bulk
+from backend.utils.db_writer import fetch_all, get_all_existing_ids, init_db, save_results_bulk
 
 # Setup logging
 logging.basicConfig(
@@ -72,6 +72,7 @@ def main() -> None:
 
     agent = ResearchAgent()
     buffer: list[tuple[str, ...]] = []
+    existing_ids = get_all_existing_ids()
 
     for start in range(0, len(df), settings.batch_size):
         batch_df = df.iloc[start : start + settings.batch_size]
@@ -79,7 +80,7 @@ def main() -> None:
         for _, row in tqdm(batch_df.iterrows(), total=len(batch_df), desc="Processing batch"):
             item_id = str(row[settings.column_name])
 
-            if detail_exists(item_id):
+            if item_id in existing_ids:
                 logger.debug(f"Skipping {item_id} — already in database")
                 continue
 

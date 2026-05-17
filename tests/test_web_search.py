@@ -234,7 +234,7 @@ def test_batch_main_uses_research_agent_and_persists_sources(
         lambda *args, **kwargs: batch_module.pd.DataFrame({"Part Number": ["ABC-123"]}),
     )
     monkeypatch.setattr(batch_main, "ResearchAgent", FakeResearchAgent)
-    monkeypatch.setattr(batch_main, "detail_exists", lambda item_id: False)
+    monkeypatch.setattr(batch_main, "get_all_existing_ids", lambda: set())
     monkeypatch.setattr(batch_main, "init_db", lambda fields: initialized_fields.extend(fields))
     monkeypatch.setattr(batch_main, "save_results_bulk", lambda data, fields: saved.extend(data))
     monkeypatch.setattr(batch_main, "fetch_all", lambda: None)

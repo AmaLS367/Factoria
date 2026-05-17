@@ -78,10 +78,11 @@ def test_migration_converts_legacy_results_to_normalized_tables(mock_db_writer: 
     assert new_row["Name"] == "Widget"
     assert new_row["Sources"] == "https://example.com"
 
-    # Check detail exists
-    assert db_writer.detail_exists("OLD-123")
-    assert db_writer.detail_exists("ABC-123")
-    assert not db_writer.detail_exists("NO-123")
+    # Check existing IDs
+    existing_ids = db_writer.get_all_existing_ids()
+    assert "OLD-123" in existing_ids
+    assert "ABC-123" in existing_ids
+    assert "NO-123" not in existing_ids
 
     # Normalized tables check
     conn = sqlite3.connect(mock_db_writer)
