@@ -15,7 +15,13 @@ from tqdm import tqdm
 
 from backend.agents.research_agent import ResearchAgent, ensure_sources_field
 from backend.config import settings
-from backend.utils.db_writer import fetch_all, get_all_existing_ids, init_db, save_results_bulk
+from backend.utils.db_writer import (
+    fetch_all,
+    get_all_existing_ids,
+    init_db,
+    prepare_row_data,
+    save_results_bulk,
+)
 
 # Setup logging
 logging.basicConfig(
@@ -86,10 +92,7 @@ def main() -> None:
 
             parsed = agent.collect_item(item_id, output_fields)
 
-            row_data = (
-                item_id,
-                *[parsed.get(f, "Not found") for f in output_fields if f != settings.column_name],
-            )
+            row_data = prepare_row_data(item_id, parsed, output_fields)
             buffer.append(row_data)
 
         if buffer:
