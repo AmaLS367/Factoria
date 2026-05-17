@@ -19,6 +19,7 @@ dependencies = [
     "ddgs>=9.14.4",
     "fastapi>=0.136.1",
     "uvicorn>=0.47.0",
+    "python-multipart>=0.0.28",
 ]
 
 [project.urls]
