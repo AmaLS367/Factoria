@@ -235,9 +235,13 @@ def test_batch_main_uses_research_agent_and_persists_sources(
     )
     monkeypatch.setattr(batch_main, "ResearchAgent", FakeResearchAgent)
     monkeypatch.setattr(batch_main, "get_all_existing_ids", lambda: set())
-    monkeypatch.setattr(batch_main, "init_db", lambda fields: initialized_fields.extend(fields))
-    monkeypatch.setattr(batch_main, "save_results_bulk", lambda data, fields: saved.extend(data))
-    monkeypatch.setattr(batch_main, "fetch_all", lambda: None)
+    monkeypatch.setattr(
+        batch_main, "init_db", lambda flds, create_default_run=True: initialized_fields.extend(flds)
+    )
+    monkeypatch.setattr(
+        batch_main, "save_results_bulk", lambda data, fields, run_id=None: saved.extend(data)
+    )
+    monkeypatch.setattr(batch_main, "fetch_all", lambda run_id=None: None)
     monkeypatch.setattr(batch_main, "format_output_excel", lambda filepath, df: None)
 
     batch_main.main()

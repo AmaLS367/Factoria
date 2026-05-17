@@ -18,6 +18,7 @@ import backend.utils.db_writer as db_writer
 from backend.agents.research_agent import ResearchAgent, ensure_sources_field
 from backend.config import settings
 from backend.utils.db_writer import (
+    create_run,
     fetch_all,
     get_all_existing_ids,
     get_db_path,
@@ -82,11 +83,18 @@ def main(
         update_job_status(job_id, "running")
 
     output_fields = ensure_sources_field(settings.target_fields)
-    init_db(output_fields)
 
-    current_run_id = db_writer._CURRENT_RUN_ID
-
-    if job_id and current_run_id is not None:
+    current_run_id = None
+    if job_id:
+        # Initialize schema without creating a default run
+        init_db(output_fields, create_default_run=False)
+        # Create a specific run for this job
+        current_run_id = create_run(
+            input_file_path,
+            output_file_path,
+            settings.model_name,
+            settings.web_search_provider,
+        )
         # Link run_id to job
         conn = sqlite3.connect(get_db_path())
         try:
@@ -96,6 +104,10 @@ def main(
             logger.error(f"Failed to associate run_id with job: {e}")
         finally:
             conn.close()
+    else:
+        # Normal CLI flow
+        init_db(output_fields)
+        current_run_id = db_writer._CURRENT_RUN_ID
 
     try:
         df = pd.read_excel(input_file_path, sheet_name=settings.sheet_name)
@@ -145,7 +157,7 @@ def main(
                     failed_in_batch += 1
 
             if buffer:
-                save_results_bulk(buffer, output_fields)
+                save_results_bulk(buffer, output_fields, run_id=current_run_id)
                 buffer.clear()
 
             if job_id:

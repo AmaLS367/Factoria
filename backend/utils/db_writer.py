@@ -20,7 +20,28 @@ _CURRENT_RUN_DB_PATH: str | None = None
 SOURCES_FIELD_NAME = "Sources"
 
 
-def init_db(fields: list[str]) -> None:
+def create_run(input_file: str, output_file: str, model_name: str, web_search_provider: str) -> int:
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO runs (input_file, output_file, model_name, web_search_provider)
+            VALUES (?, ?, ?, ?)
+            """,
+            (input_file, output_file, model_name, web_search_provider),
+        )
+        run_id = cur.lastrowid
+        conn.commit()
+        if run_id is None:
+            raise RuntimeError("Failed to create run.")
+        return run_id
+    finally:
+        conn.close()
+
+
+def init_db(fields: list[str], create_default_run: bool = True) -> None:
     db_path = get_db_path()
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     conn = sqlite3.connect(db_path)
@@ -29,36 +50,28 @@ def init_db(fields: list[str]) -> None:
         run_migrations(conn, settings.column_name, fields)
         conn.commit()
 
-        # Create or fetch a run for this session
-        global _CURRENT_RUN_DB_PATH, _CURRENT_RUN_ID
-        current_run_exists = False
-        if _CURRENT_RUN_ID is not None and _CURRENT_RUN_DB_PATH == db_path:
-            current_run_exists = (
-                conn.execute("SELECT 1 FROM runs WHERE id = ?", (_CURRENT_RUN_ID,)).fetchone()
-                is not None
-            )
+        if create_default_run:
+            # Create or fetch a run for this session
+            global _CURRENT_RUN_DB_PATH, _CURRENT_RUN_ID
+            current_run_exists = False
+            if _CURRENT_RUN_ID is not None and _CURRENT_RUN_DB_PATH == db_path:
+                current_run_exists = (
+                    conn.execute("SELECT 1 FROM runs WHERE id = ?", (_CURRENT_RUN_ID,)).fetchone()
+                    is not None
+                )
 
-        if not current_run_exists:
-            cur = conn.cursor()
-            cur.execute(
-                """
-                INSERT INTO runs (input_file, output_file, model_name, web_search_provider)
-                VALUES (?, ?, ?, ?)
-                """,
-                (
+            if not current_run_exists:
+                _CURRENT_RUN_ID = create_run(
                     settings.input_file,
                     settings.output_file,
                     settings.model_name,
                     settings.web_search_provider,
-                ),  # noqa: E501
-            )
-            _CURRENT_RUN_ID = cur.lastrowid
-            _CURRENT_RUN_DB_PATH = db_path
-            conn.commit()
+                )
+                _CURRENT_RUN_DB_PATH = db_path
 
     finally:
         conn.close()
-    logger.info(f"Database initialized at {db_path}")
+    logger.info(f"Database initialized at {db_path} (create_default_run={create_default_run})")
 
 
 def get_all_existing_ids() -> set[str]:
@@ -89,23 +102,31 @@ def prepare_row_data(
     )
 
 
-def save_single_item(item_id: str, data: dict[str, Any], output_fields: list[str]) -> None:
+def save_single_item(
+    item_id: str, data: dict[str, Any], output_fields: list[str], run_id: int | None = None
+) -> None:
     """Initialize the database and save a single item's data."""
-    init_db(output_fields)
+    init_db(output_fields, create_default_run=(run_id is None))
     row_data = prepare_row_data(item_id, data, output_fields)
-    save_results_bulk([row_data], output_fields)
+    save_results_bulk([row_data], output_fields, run_id=run_id)
 
 
-def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> None:
+def save_results_bulk(
+    data_list: list[tuple[str, ...]], fields: list[str], run_id: int | None = None
+) -> None:
     if not data_list:
         return
 
     db_path = get_db_path()
-    if _CURRENT_RUN_ID is None or _CURRENT_RUN_DB_PATH != db_path:
-        raise RuntimeError(
-            "save_results_bulk called before init_db for the current database path; "
-            "_CURRENT_RUN_ID is not set."
-        )
+
+    active_run_id = run_id
+    if active_run_id is None:
+        if _CURRENT_RUN_ID is None or _CURRENT_RUN_DB_PATH != db_path:
+            raise RuntimeError(
+                "save_results_bulk called before init_db for the current database path; "
+                "_CURRENT_RUN_ID is not set and run_id was not explicitly passed."
+            )
+        active_run_id = _CURRENT_RUN_ID
 
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON")
@@ -130,7 +151,7 @@ def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> No
                     INSERT INTO items (run_id, identifier_column, identifier_value)
                     VALUES (?, ?, ?)
                     """,
-                    (_CURRENT_RUN_ID, settings.column_name, item_id),
+                    (active_run_id, settings.column_name, item_id),
                 )
                 db_item_id = cur.lastrowid
             except sqlite3.IntegrityError:
@@ -192,9 +213,17 @@ def fetch_all(run_id: int | None = None) -> pd.DataFrame | None:
         items_df = items_df.rename(columns={"identifier_value": settings.column_name})
 
         # Fetch fields
-        fields_df = pd.read_sql_query(
-            "SELECT item_id, field_name, field_value FROM item_fields", conn
-        )  # noqa: E501
+        if run_id is not None:
+            fields_df = pd.read_sql_query(
+                "SELECT item_id, field_name, field_value FROM item_fields "
+                "WHERE item_id IN (SELECT id FROM items WHERE run_id = ?)",
+                conn,
+                params=(run_id,),
+            )
+        else:
+            fields_df = pd.read_sql_query(
+                "SELECT item_id, field_name, field_value FROM item_fields", conn
+            )
 
         if not fields_df.empty:
             pivoted = fields_df.pivot(
@@ -207,7 +236,15 @@ def fetch_all(run_id: int | None = None) -> pd.DataFrame | None:
             merged = items_df.copy()
 
         # Fetch sources
-        sources_df = pd.read_sql_query("SELECT item_id, url FROM item_sources", conn)
+        if run_id is not None:
+            sources_df = pd.read_sql_query(
+                "SELECT item_id, url FROM item_sources "
+                "WHERE item_id IN (SELECT id FROM items WHERE run_id = ?)",
+                conn,
+                params=(run_id,),
+            )
+        else:
+            sources_df = pd.read_sql_query("SELECT item_id, url FROM item_sources", conn)
         if not sources_df.empty:
             # Group by item_id and join URLs with newline
             sources_grouped = (
