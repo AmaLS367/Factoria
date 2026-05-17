@@ -1,9 +1,11 @@
 import os
 import sys
-from unittest.mock import MagicMock, patch
+from io import BytesIO
+from unittest.mock import MagicMock, mock_open, patch
 
 import pandas as pd
 from fastapi.testclient import TestClient
+from openpyxl import Workbook
 
 from backend.config import settings
 
@@ -11,6 +13,18 @@ sys.path.insert(0, os.path.abspath("backend"))
 from api.app import app
 
 client = TestClient(app)
+
+_XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _make_xlsx_bytes() -> bytes:
+    wb = Workbook()
+    ws = wb.active or wb.create_sheet()
+    ws.append(["Item ID"])
+    ws.append(["PART-001"])
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
 
 
 def test_health() -> None:
@@ -101,15 +115,23 @@ def test_list_items_empty(mock_fetch_all: MagicMock, mock_exists: MagicMock) -> 
     assert len(data) == 0
 
 
+@patch("backend.api.routes.os.makedirs")
 @patch("backend.api.routes.os.path.getmtime")
 @patch("backend.api.routes.os.path.exists")
 @patch("backend.api.routes.run_excel_job")
 def test_jobs_excel(
-    mock_run_excel_job: MagicMock, mock_exists: MagicMock, mock_getmtime: MagicMock
+    mock_run_excel_job: MagicMock,
+    mock_exists: MagicMock,
+    mock_getmtime: MagicMock,
+    _mock_makedirs: MagicMock,
 ) -> None:
     mock_exists.return_value = True
-    mock_getmtime.side_effect = [0.0, 1.0]  # prev_mtime, new_mtime
-    response = client.post("/jobs/excel")
+    mock_getmtime.side_effect = [0.0, 1.0]
+    with patch("builtins.open", mock_open()):
+        response = client.post(
+            "/jobs/excel",
+            files={"file": ("test.xlsx", _make_xlsx_bytes(), _XLSX_CONTENT_TYPE)},
+        )
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "completed"
@@ -117,13 +139,44 @@ def test_jobs_excel(
     mock_run_excel_job.assert_called_once()
 
 
+@patch("backend.api.routes.os.makedirs")
 @patch("backend.api.routes.run_excel_job")
-def test_jobs_excel_failure(mock_run_excel_job: MagicMock) -> None:
+def test_jobs_excel_failure(mock_run_excel_job: MagicMock, _mock_makedirs: MagicMock) -> None:
     mock_run_excel_job.side_effect = Exception("Test Error")
-    response = client.post("/jobs/excel")
+    with patch("builtins.open", mock_open()):
+        response = client.post(
+            "/jobs/excel",
+            files={"file": ("test.xlsx", _make_xlsx_bytes(), _XLSX_CONTENT_TYPE)},
+        )
     assert response.status_code == 500
     data = response.json()
     assert data["detail"] == "Excel job failed"
+
+
+def test_jobs_excel_no_file() -> None:
+    response = client.post("/jobs/excel")
+    assert response.status_code == 422
+
+
+@patch("backend.api.routes.os.makedirs")
+@patch("backend.api.routes.os.path.getmtime")
+@patch("backend.api.routes.os.path.exists")
+@patch("backend.api.routes.run_excel_job")
+def test_jobs_excel_saves_input_file(
+    _mock_run_excel_job: MagicMock,
+    mock_exists: MagicMock,
+    mock_getmtime: MagicMock,
+    _mock_makedirs: MagicMock,
+) -> None:
+    mock_exists.return_value = True
+    mock_getmtime.side_effect = [0.0, 1.0]
+    m = mock_open()
+    with patch("builtins.open", m):
+        client.post(
+            "/jobs/excel",
+            files={"file": ("test.xlsx", _make_xlsx_bytes(), _XLSX_CONTENT_TYPE)},
+        )
+    m.assert_any_call(settings.input_file, "wb")
 
 
 @patch("backend.api.routes.os.path.exists")
@@ -189,12 +242,18 @@ def test_list_items_pagination_invalid(mock_fetch_all: MagicMock, mock_exists: M
     assert response.status_code == 400
 
 
+@patch("backend.api.routes.os.makedirs")
 @patch("backend.api.routes.os.path.exists")
 @patch("backend.api.routes.run_excel_job")
-def test_jobs_excel_no_output(mock_run_excel_job: MagicMock, mock_exists: MagicMock) -> None:
-    # return True for health, false for output file in jobs_excel
+def test_jobs_excel_no_output(
+    _mock_run_excel_job: MagicMock, mock_exists: MagicMock, _mock_makedirs: MagicMock
+) -> None:
     mock_exists.return_value = False
-    response = client.post("/jobs/excel")
+    with patch("builtins.open", mock_open()):
+        response = client.post(
+            "/jobs/excel",
+            files={"file": ("test.xlsx", _make_xlsx_bytes(), _XLSX_CONTENT_TYPE)},
+        )
     assert response.status_code == 500
     data = response.json()
     assert "Excel job failed" in data["detail"]

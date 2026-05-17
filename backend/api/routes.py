@@ -1,9 +1,10 @@
 import logging
 import os
+import shutil
 import sqlite3
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
@@ -97,8 +98,12 @@ def collect_item(request: CollectRequest) -> dict[str, Any]:
 
 
 @router.post("/jobs/excel")
-def start_excel_job() -> dict[str, str]:
+async def start_excel_job(file: UploadFile = File(...)) -> dict[str, str]:  # noqa: B008
     try:
+        os.makedirs(os.path.dirname(settings.input_file) or ".", exist_ok=True)
+        with open(settings.input_file, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+
         prev_mtime = 0.0
         if os.path.exists(settings.output_file):
             prev_mtime = os.path.getmtime(settings.output_file)
