@@ -40,17 +40,17 @@ export function ExcelJob() {
     <div className="space-y-6 max-w-2xl mx-auto">
       <Card title="Batch Excel Job">
         <div className="space-y-4">
-          <p className="text-sm text-neutral-600">
+          <p className="text-sm text-neutral-600 dark:text-neutral-300">
             Upload an Excel file to process all items using the research agent.
             Results will be saved to an Excel export.
           </p>
 
           <div
-            className="flex items-center gap-3 p-3 border border-dashed border-neutral-300 rounded-md bg-neutral-50 cursor-pointer hover:bg-neutral-100 transition-colors"
+            className="flex items-center gap-3 p-3 border border-dashed border-neutral-300 dark:border-neutral-600 rounded-md bg-neutral-50 dark:bg-neutral-800 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
             onClick={() => fileInputRef.current?.click()}
           >
-            <Upload className="h-5 w-5 text-neutral-400 shrink-0" />
-            <span className="text-sm text-neutral-600 truncate">
+            <Upload className="h-5 w-5 text-neutral-400 dark:text-neutral-500 shrink-0" />
+            <span className="text-sm text-neutral-600 dark:text-neutral-300 truncate">
               {selectedFile ? selectedFile.name : 'Click to select an .xlsx file'}
             </span>
             <input
@@ -76,7 +76,7 @@ export function ExcelJob() {
               href={getExportUrl()}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center px-4 py-2 border border-neutral-300 shadow-sm text-sm font-medium rounded-md text-neutral-700 bg-white hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              className="inline-flex items-center px-4 py-2 border border-neutral-300 dark:border-neutral-600 shadow-sm text-sm font-medium rounded-md text-neutral-700 dark:text-neutral-200 bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
             >
               <Download className="h-4 w-4 mr-2" />
               Download Latest Export
@@ -85,19 +85,19 @@ export function ExcelJob() {
         </div>
 
         {error && (
-          <div className="mt-4 p-3 bg-red-50 text-red-700 rounded-md text-sm border border-red-200">
+          <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-md text-sm border border-red-200 dark:border-red-800">
             {error}
           </div>
         )}
 
         {status && (
-          <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-md">
+          <div className="mt-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md">
             <div className="flex items-center mb-2">
-              <FileSpreadsheet className="w-5 h-5 text-green-600 mr-2" />
-              <h4 className="font-medium text-green-800">Job Completed Successfully</h4>
+              <FileSpreadsheet className="w-5 h-5 text-green-600 dark:text-green-400 mr-2" />
+              <h4 className="font-medium text-green-800 dark:text-green-300">Job Completed Successfully</h4>
             </div>
-            <p className="text-sm text-green-700">
-              Output saved to: <code className="bg-white/50 px-1 py-0.5 rounded ml-1">{status.output_path}</code>
+            <p className="text-sm text-green-700 dark:text-green-300">
+              Output saved to: <code className="bg-white/50 dark:bg-white/10 px-1 py-0.5 rounded ml-1">{status.output_path}</code>
             </p>
           </div>
         )}
