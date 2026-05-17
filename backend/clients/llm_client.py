@@ -7,6 +7,7 @@ from openai import OpenAI
 from requests.exceptions import RequestException
 
 from backend.config import settings
+from backend.utils.retry import with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -26,20 +27,26 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         self.model_name = settings.resolved_llm_model
 
     def get_answer(self, prompt: str) -> str:
-        try:
+        def _call() -> str:
             response = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=[
-                    {
-                        "role": "system",
-                        "content": settings.system_prompt,
-                    },
+                    {"role": "system", "content": settings.system_prompt},
                     {"role": "user", "content": prompt},
                 ],
-                temperature=0.1,  # Low temperature for more factual responses
+                temperature=0.1,
                 timeout=settings.resolved_llm_timeout_seconds,
             )
             return response.choices[0].message.content or ""
+
+        try:
+            return with_retry(
+                _call,
+                max_attempts=settings.retry_max_attempts,
+                base_delay=settings.retry_base_delay_seconds,
+                max_delay=settings.retry_max_delay_seconds,
+                label="llm/openai",
+            )
         except Exception as e:
             logger.error(f"Error querying OpenAI-compatible API: {e}")
             return ""
@@ -60,14 +67,12 @@ class GeminiProvider(BaseLLMProvider):
             "generationConfig": {"temperature": 0.1},
         }
 
-        try:
+        def _call() -> str:
             response = requests.post(
                 url, json=payload, timeout=settings.resolved_llm_timeout_seconds
             )
             response.raise_for_status()
             data = response.json()
-
-            # Navigate the Gemini response structure
             try:
                 text = data["candidates"][0]["content"]["parts"][0]["text"]
                 return cast(str, text)
@@ -75,6 +80,14 @@ class GeminiProvider(BaseLLMProvider):
                 logger.error(f"Unexpected Gemini API response structure: {data}")
                 return ""
 
+        try:
+            return with_retry(
+                _call,
+                max_attempts=settings.retry_max_attempts,
+                base_delay=settings.retry_base_delay_seconds,
+                max_delay=settings.retry_max_delay_seconds,
+                label="llm/gemini",
+            )
         except RequestException as e:
             logger.error(f"Error querying Gemini API: {e}")
             if hasattr(e, "response") and e.response is not None:
@@ -96,26 +109,29 @@ class OllamaProvider(BaseLLMProvider):
         payload: dict[str, Any] = {
             "model": self.model_name,
             "messages": [
-                {
-                    "role": "system",
-                    "content": settings.system_prompt,
-                },
-                {
-                    "role": "user",
-                    "content": prompt,
-                },
+                {"role": "system", "content": settings.system_prompt},
+                {"role": "user", "content": prompt},
             ],
             "stream": False,
             "options": {"temperature": 0.1},
         }
 
-        try:
+        def _call() -> str:
             response = requests.post(
                 url, json=payload, timeout=settings.resolved_llm_timeout_seconds
             )
             response.raise_for_status()
             data = response.json()
             return cast(str, data.get("message", {}).get("content", ""))
+
+        try:
+            return with_retry(
+                _call,
+                max_attempts=settings.retry_max_attempts,
+                base_delay=settings.retry_base_delay_seconds,
+                max_delay=settings.retry_max_delay_seconds,
+                label="llm/ollama",
+            )
         except RequestException as e:
             logger.error(f"Error querying Ollama API: {e}")
             if hasattr(e, "response") and e.response is not None:
