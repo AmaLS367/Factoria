@@ -174,13 +174,18 @@ def save_results_bulk(data_list: list[tuple[str, ...]], fields: list[str]) -> No
         conn.close()
 
 
-def fetch_all() -> pd.DataFrame | None:
+def fetch_all(run_id: int | None = None) -> pd.DataFrame | None:
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON")
     try:
         # Fetch items
-        items_df = pd.read_sql_query("SELECT id, identifier_value FROM items", conn)
+        if run_id is not None:
+            items_df = pd.read_sql_query(
+                "SELECT id, identifier_value FROM items WHERE run_id = ?", conn, params=(run_id,)
+            )
+        else:
+            items_df = pd.read_sql_query("SELECT id, identifier_value FROM items", conn)
         if items_df.empty:
             return pd.DataFrame(columns=[settings.column_name])
 

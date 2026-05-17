@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import sys
 
 # Add the project root to sys.path so 'backend.*' imports work when run as a script
@@ -13,16 +14,18 @@ from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
 from tqdm import tqdm
 
+import backend.utils.db_writer as db_writer
 from backend.agents.research_agent import ResearchAgent, ensure_sources_field
 from backend.config import settings
 from backend.utils.db_writer import (
     fetch_all,
     get_all_existing_ids,
+    get_db_path,
     init_db,
     prepare_row_data,
     save_results_bulk,
 )
-from backend.utils.jobs import update_job_progress, update_job_status
+from backend.utils.jobs import update_job_progress, update_job_status, update_job_total_items
 
 # Setup logging
 logging.basicConfig(
@@ -67,8 +70,13 @@ def format_output_excel(filepath: str, df: pd.DataFrame | None) -> None:
     logger.info(f"Results formatted and saved to {filepath}")
 
 
-def main(job_id: str | None = None) -> None:
+def main(
+    job_id: str | None = None, input_file: str | None = None, output_file: str | None = None
+) -> None:
     logger.info("Starting AI Data Collector")
+
+    input_file_path = input_file or settings.input_file
+    output_file_path = output_file or settings.output_file
 
     if job_id:
         update_job_status(job_id, "running")
@@ -76,8 +84,23 @@ def main(job_id: str | None = None) -> None:
     output_fields = ensure_sources_field(settings.target_fields)
     init_db(output_fields)
 
+    current_run_id = db_writer._CURRENT_RUN_ID
+
+    if job_id and current_run_id is not None:
+        # Link run_id to job
+        conn = sqlite3.connect(get_db_path())
+        try:
+            conn.execute("UPDATE jobs SET run_id = ? WHERE job_id = ?", (current_run_id, job_id))
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Failed to associate run_id with job: {e}")
+        finally:
+            conn.close()
+
     try:
-        df = pd.read_excel(settings.input_file, sheet_name=settings.sheet_name)
+        df = pd.read_excel(input_file_path, sheet_name=settings.sheet_name)
+        if job_id:
+            update_job_total_items(job_id, len(df))
     except Exception as e:
         logger.error(f"Failed to read input file: {e}")
         if job_id:
@@ -133,8 +156,8 @@ def main(job_id: str | None = None) -> None:
                     failed=failed_in_batch,
                 )
 
-        final_df = fetch_all()
-        format_output_excel(settings.output_file, final_df)
+        final_df = fetch_all(run_id=current_run_id if job_id else None)
+        format_output_excel(output_file_path, final_df)
         logger.info("Data collection completed successfully")
         if job_id:
             update_job_status(job_id, "completed")
