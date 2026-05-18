@@ -1,6 +1,7 @@
 import os
 import sys
 from io import BytesIO
+from typing import Any
 from unittest.mock import MagicMock, mock_open, patch
 
 import pandas as pd
@@ -328,3 +329,198 @@ def test_export_latest_uses_job_output(mock_get_job: MagicMock) -> None:
                 media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 filename=f"export_{job_id}.xlsx",
             )
+
+
+def test_preview_xlsx() -> None:
+    response = client.post(
+        "/jobs/excel/preview",
+        files={"file": ("preview.xlsx", _make_xlsx_bytes(), _XLSX_CONTENT_TYPE)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["file_type"] == "xlsx"
+    assert "Item ID" in data["columns"]
+    assert data["row_count"] == 1
+
+
+def test_preview_csv() -> None:
+    csv_bytes = b"Item ID,Name\nPART-001,Widget\nPART-002,Gadget\n"
+    response = client.post(
+        "/jobs/excel/preview",
+        files={"file": ("preview.csv", csv_bytes, "text/csv")},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["file_type"] == "csv"
+    assert "Item ID" in data["columns"]
+    assert data["row_count"] == 2
+
+
+def test_preview_invalid_file() -> None:
+    response = client.post(
+        "/jobs/excel/preview",
+        files={"file": ("bad.xlsx", b"not really xlsx", _XLSX_CONTENT_TYPE)},
+    )
+    assert response.status_code == 400
+
+
+@patch("backend.api.routes.cancel_job")
+@patch("backend.api.routes.get_job")
+def test_cancel_job_happy_path(
+    mock_get_job: MagicMock, mock_cancel_job: MagicMock
+) -> None:
+    mock_get_job.return_value = {"job_id": "abc", "status": "running"}
+    mock_cancel_job.return_value = True
+    response = client.post("/jobs/abc/cancel")
+    assert response.status_code == 200
+    assert response.json()["status"] == "cancelled"
+
+
+@patch("backend.api.routes.get_job")
+def test_cancel_job_not_found(mock_get_job: MagicMock) -> None:
+    mock_get_job.return_value = None
+    response = client.post("/jobs/missing/cancel")
+    assert response.status_code == 404
+
+
+@patch("backend.api.routes.get_job")
+def test_cancel_job_wrong_status(mock_get_job: MagicMock) -> None:
+    mock_get_job.return_value = {"job_id": "abc", "status": "completed"}
+    response = client.post("/jobs/abc/cancel")
+    assert response.status_code == 400
+
+
+@patch("backend.api.routes.os.path.exists")
+@patch("backend.api.routes.create_job")
+@patch("backend.api.routes.BackgroundTasks.add_task")
+@patch("backend.api.routes.get_job")
+def test_retry_job_happy_path(
+    mock_get_job: MagicMock,
+    _mock_add: MagicMock,
+    mock_create: MagicMock,
+    mock_exists: MagicMock,
+) -> None:
+    mock_get_job.return_value = {
+        "job_id": "old",
+        "status": "failed",
+        "input_file": "input/jobs/old.xlsx",
+        "sheet_name": None,
+        "column_name": None,
+        "target_fields": None,
+        "item_label": None,
+    }
+    mock_exists.return_value = True
+    mock_create.return_value = "new-job-id"
+    response = client.post("/jobs/old/retry")
+    assert response.status_code == 200
+    assert response.json()["status"] == "queued"
+
+
+@patch("backend.api.routes.get_job")
+def test_retry_job_not_found(mock_get_job: MagicMock) -> None:
+    mock_get_job.return_value = None
+    response = client.post("/jobs/missing/retry")
+    assert response.status_code == 404
+
+
+@patch("backend.api.routes.get_job")
+def test_retry_job_wrong_status(mock_get_job: MagicMock) -> None:
+    mock_get_job.return_value = {"job_id": "x", "status": "running"}
+    response = client.post("/jobs/x/retry")
+    assert response.status_code == 400
+
+
+@patch("backend.api.routes.os.path.exists")
+@patch("backend.api.routes.get_job")
+def test_retry_job_missing_input_file(
+    mock_get_job: MagicMock, mock_exists: MagicMock
+) -> None:
+    mock_get_job.return_value = {
+        "job_id": "old",
+        "status": "failed",
+        "input_file": "gone.xlsx",
+    }
+    mock_exists.return_value = False
+    response = client.post("/jobs/old/retry")
+    assert response.status_code == 400
+
+
+@patch("backend.api.routes.get_job")
+def test_export_job_not_completed(mock_get_job: MagicMock) -> None:
+    mock_get_job.return_value = {"job_id": "x", "status": "running"}
+    response = client.get("/jobs/x/export")
+    assert response.status_code == 400
+
+
+@patch("backend.api.routes.get_job")
+def test_export_job_not_found(mock_get_job: MagicMock) -> None:
+    mock_get_job.return_value = None
+    response = client.get("/jobs/missing/export")
+    assert response.status_code == 404
+
+
+@patch("backend.api.routes.os.path.exists")
+def test_get_item_sources_no_db(mock_exists: MagicMock) -> None:
+    mock_exists.return_value = False
+    response = client.get("/items/foo/sources")
+    assert response.status_code == 404
+
+
+@patch("backend.api.routes.os.path.exists")
+def test_get_item_fields_no_db(mock_exists: MagicMock) -> None:
+    mock_exists.return_value = False
+    response = client.get("/items/foo/fields")
+    assert response.status_code == 404
+
+
+def test_get_logs_invalid_lines() -> None:
+    response = client.get("/logs?lines=99999")
+    assert response.status_code == 400
+
+
+@patch("backend.api.routes.os.path.exists")
+def test_get_logs_missing_file(mock_exists: MagicMock) -> None:
+    mock_exists.return_value = False
+    response = client.get("/logs?lines=10")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["entries"] == []
+    assert data["total_returned"] == 0
+
+
+def test_get_logs_with_level_filter(tmp_path: Any) -> None:
+    log_content = (
+        "2026-05-18 10:00:00,000 [INFO] backend.main: starting up\n"
+        "2026-05-18 10:00:01,000 [ERROR] backend.main: kaboom\n"
+        "raw line with no format\n"
+    )
+    log_file = tmp_path / "collector.log"
+    log_file.write_text(log_content, encoding="utf-8")
+
+    with patch("backend.api.routes._LOG_FILE", str(log_file)):
+        response = client.get("/logs?lines=10&level=ERROR")
+        assert response.status_code == 200
+        data = response.json()
+        levels = {entry["level"] for entry in data["entries"]}
+        assert levels == {"ERROR"}
+
+
+def test_collect_item_agent_failure() -> None:
+    with patch("backend.api.routes.ResearchAgent") as mock_agent:
+        instance = MagicMock()
+        instance.collect_item_with_confidence.side_effect = RuntimeError("boom")
+        mock_agent.return_value = instance
+        response = client.post("/items/collect", json={"item_id": "x"})
+        assert response.status_code == 500
+
+
+def test_collect_item_save_failure() -> None:
+    with patch("backend.api.routes.ResearchAgent") as mock_agent, patch(
+        "backend.api.routes.save_single_item"
+    ) as mock_save:
+        instance = MagicMock()
+        instance.collect_item_with_confidence.return_value = ({"Name": "X"}, {"Name": 0.5})
+        mock_agent.return_value = instance
+        mock_save.side_effect = RuntimeError("db down")
+        response = client.post("/items/collect", json={"item_id": "x"})
+        assert response.status_code == 500
