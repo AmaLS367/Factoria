@@ -95,6 +95,10 @@ class Settings(BaseSettings):
     # SQLite
     db_path: str = "results/database.sqlite"
 
+    # Human Review Settings
+    review_enabled: bool = True
+    review_confidence_threshold: float = 0.6
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 

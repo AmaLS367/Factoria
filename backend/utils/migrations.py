@@ -3,6 +3,8 @@ import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from backend.config import settings
+
 logger = logging.getLogger(__name__)
 
 SOURCES_FIELD_NAME = "Sources"
@@ -402,6 +404,50 @@ def add_item_token_accounting(cur: sqlite3.Cursor, _context: MigrationContext) -
     cur.execute("ALTER TABLE items ADD COLUMN estimated_cost_usd REAL DEFAULT 0.0")
 
 
+def add_human_review_fields(cur: sqlite3.Cursor, _context: MigrationContext) -> None:
+    cur.execute("ALTER TABLE item_fields ADD COLUMN original_value TEXT")
+    cur.execute("ALTER TABLE item_fields ADD COLUMN review_status TEXT DEFAULT 'needs_review'")
+    cur.execute("ALTER TABLE item_fields ADD COLUMN reviewed_at TEXT")
+    cur.execute("ALTER TABLE item_fields ADD COLUMN reviewer_note TEXT")
+
+    # Backfill original_value for existing rows
+    cur.execute("""
+        UPDATE item_fields
+        SET original_value = field_value
+        WHERE original_value IS NULL
+    """)
+
+    # Backfill review_status to needs_review using settings threshold
+    cur.execute(
+        """
+        UPDATE item_fields
+        SET review_status = 'needs_review'
+        WHERE field_value IS NULL
+           OR field_value = ''
+           OR field_value = 'Not found'
+           OR confidence IS NULL
+           OR confidence < ?
+        """,
+        (settings.review_confidence_threshold,),
+    )
+
+    # Backfill review_status to auto_accepted for everything else using settings threshold
+    cur.execute(
+        """
+        UPDATE item_fields
+        SET review_status = 'auto_accepted'
+        WHERE NOT (
+            field_value IS NULL
+            OR field_value = ''
+            OR field_value = 'Not found'
+            OR confidence IS NULL
+            OR confidence < ?
+        )
+        """,
+        (settings.review_confidence_threshold,),
+    )
+
+
 MIGRATIONS = [
     Migration(1, "create_results_table", create_results_table),
     Migration(2, "sync_configured_result_columns", sync_configured_result_columns),
@@ -413,4 +459,5 @@ MIGRATIONS = [
     Migration(8, "add_job_template_fields", add_job_template_fields),
     Migration(9, "add_job_token_accounting", add_job_token_accounting),
     Migration(10, "add_item_token_accounting", add_item_token_accounting),
+    Migration(11, "add_human_review_fields", add_human_review_fields),
 ]

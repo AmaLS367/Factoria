@@ -9,7 +9,7 @@ import re
 import shutil
 import sqlite3
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
@@ -20,7 +20,14 @@ from backend.agents.research_agent import ResearchAgent, ensure_sources_field
 from backend.config import settings
 from backend.main import main as run_excel_job
 from backend.tools.web_search import WebSearchTool
-from backend.utils.db_writer import fetch_all, get_db_path, save_single_item
+from backend.utils.db_writer import (
+    fetch_all,
+    fetch_review_queue,
+    get_db_path,
+    get_review_summary,
+    save_single_item,
+    update_field_review,
+)
 from backend.utils.jobs import cancel_job, create_job, get_job, get_recent_jobs
 from backend.utils.templates import (
     Template as SchemaTemplate,
@@ -136,6 +143,8 @@ def get_settings() -> dict[str, Any]:
         "batch_size": settings.batch_size,
         "target_fields": settings.target_fields,
         "item_label": settings.item_label,
+        "review_enabled": settings.review_enabled,
+        "review_confidence_threshold": settings.review_confidence_threshold,
     }
 
 
@@ -195,9 +204,9 @@ async def preview_excel_file(
             file_type = "xlsx"
 
         assert isinstance(df, pd.DataFrame)
-        columns = [str(c) for c in df.columns.tolist()]
+        columns = [f"{c}" for c in df.columns.tolist()]
         sample_rows = [
-            {str(k): (None if pd.isnull(v) else v) for k, v in row.items()}
+            {f"{k}": (None if pd.isnull(v) else v) for k, v in row.items()}
             for row in df.head(3).to_dict(orient="records")
         ]
 
@@ -508,3 +517,54 @@ def get_logs(lines: int = 200, level: str = "") -> dict[str, Any]:
         entries.append(entry)
 
     return {"entries": entries, "total_returned": len(entries), "file": _LOG_FILE}
+
+
+class ReviewUpdateRequest(BaseModel):
+    status: Literal["approved", "corrected", "rejected"]
+    field_value: str | None = None
+    reviewer_note: str | None = None
+
+
+@router.get("/reviews/fields")
+def list_review_fields(
+    status: str = "needs_review",
+    limit: int = 100,
+    offset: int = 0,
+    job_id: str | None = None,
+) -> list[dict[str, Any]]:
+    if limit < 1 or limit > 1000:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 1000")
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="offset must be >= 0")
+
+    allowed_statuses = {"needs_review", "auto_accepted", "approved", "corrected", "rejected"}
+    if status not in allowed_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status filter. Must be one of: {', '.join(allowed_statuses)}",
+        )
+
+    return fetch_review_queue(status=status, limit=limit, offset=offset, job_id=job_id)
+
+
+@router.patch("/reviews/fields/{field_id}")
+def review_field(field_id: int, request: ReviewUpdateRequest) -> dict[str, Any]:
+    try:
+        updated = update_field_review(
+            field_id=field_id,
+            status=request.status,
+            field_value=request.field_value,
+            reviewer_note=request.reviewer_note,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Review field not found")
+
+    return updated
+
+
+@router.get("/reviews/summary")
+def review_summary(job_id: str | None = None) -> dict[str, int]:
+    return get_review_summary(job_id=job_id)
