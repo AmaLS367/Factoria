@@ -11,7 +11,8 @@ from backend.tools.web_search import (
     format_sources,
 )
 from backend.utils.cache import get_cache, make_cache_key, set_cache
-from backend.utils.parse import parse_answer
+from backend.utils.parse import parse_answer, parse_answer_strict
+from backend.utils.schemas import LLMResponseValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -86,8 +87,31 @@ class ResearchAgent:
                     confidence = {k: None for k in values}
 
         if values is None or confidence is None:
-            raw_response = self.llm_client.get_answer(prompt)
-            values, confidence = parse_answer(raw_response, output_fields)
+            max_attempts = max(1, settings.llm_validation_max_attempts)
+            last_raw = ""
+            for attempt in range(1, max_attempts + 1):
+                last_raw = self.llm_client.get_answer(prompt)
+                if not last_raw:
+                    logger.warning(
+                        f"LLM returned empty response for {item_id}; skipping retry"
+                    )
+                    break
+                try:
+                    values, confidence = parse_answer_strict(last_raw, output_fields)
+                    if attempt > 1:
+                        logger.info(
+                            f"LLM response validated on attempt {attempt} for {item_id}"
+                        )
+                    break
+                except LLMResponseValidationError as e:
+                    logger.warning(
+                        f"LLM response failed validation "
+                        f"(attempt {attempt}/{max_attempts}) for {item_id}: {e}"
+                    )
+
+            if values is None or confidence is None:
+                logger.warning(f"Falling back to lenient parser for {item_id}")
+                values, confidence = parse_answer(last_raw, output_fields)
 
             if use_cache and cache_key is not None:
                 has_extracted_data = any(
