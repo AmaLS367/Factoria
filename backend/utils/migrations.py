@@ -28,6 +28,21 @@ def run_migrations(
     identifier_column: str,
     fields: list[str],
 ) -> None:
+    """Run legacy schema migrations.
+
+    DEPRECATED: This custom migration scheme has been replaced by Alembic.
+    It is preserved solely for backward compatibility to bridge existing databases
+    to the baseline revision. New migrations must be written as Alembic revisions in
+    backend/db/migrations/versions.
+    """
+    import warnings
+
+    warnings.warn(
+        "run_migrations is deprecated. Use backend.db.alembic_runner instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    logger.warning("Using DEPRECATED legacy migrations runner.")
     context = MigrationContext(identifier_column=identifier_column, fields=fields)
     cur = conn.cursor()
     cur.execute("PRAGMA foreign_keys = ON")
