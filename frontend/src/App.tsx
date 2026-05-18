@@ -6,6 +6,7 @@ import { ExcelJob } from "./components/ExcelJob";
 import { ItemsTable } from "./components/ItemsTable";
 import { Logs } from "./components/Logs";
 import { Templates } from "./components/Templates";
+import { ReviewPage } from "./components/ReviewPage";
 import type { SchemaTemplate } from "./types";
 import {
   Database,
@@ -17,6 +18,7 @@ import {
   Sun,
   ScrollText,
   LayoutTemplate,
+  UserCheck,
 } from "lucide-react";
 
 type View =
@@ -24,6 +26,7 @@ type View =
   | "collect"
   | "search"
   | "excel"
+  | "review"
   | "items"
   | "logs"
   | "templates";
@@ -72,6 +75,11 @@ function App() {
       id: "excel",
       label: "Excel Job",
       icon: <FileSpreadsheet className="w-5 h-5 mr-3" />,
+    },
+    {
+      id: "review",
+      label: "Human Review Queue",
+      icon: <UserCheck className="w-5 h-5 mr-3" />,
     },
     {
       id: "items",
@@ -161,6 +169,7 @@ function App() {
               onTemplateClear={() => setPendingTemplate(undefined)}
             />
           )}
+          {currentView === "review" && <ReviewPage />}
           {currentView === "items" && <ItemsTable />}
           {currentView === "logs" && <Logs />}
         </main>
