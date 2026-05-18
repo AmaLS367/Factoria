@@ -14,7 +14,10 @@ _JSON_PATTERN = re.compile(r"\{.*\}", re.DOTALL)
 def _normalize_fields(
     values_raw: dict[str, object], confidence_raw: dict[str, object], fields: list[str]
 ) -> tuple[dict[str, str], dict[str, float | None]]:
-    values = {field: str(values_raw.get(field, "Not found")) for field in fields}
+    values: dict[str, str] = {}
+    for field in fields:
+        raw_val = values_raw.get(field)
+        values[field] = str(raw_val) if raw_val is not None else "Not found"
 
     confidence: dict[str, float | None] = {}
     for field in fields:
