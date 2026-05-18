@@ -53,9 +53,7 @@ def parse_answer_strict(
         raise LLMResponseValidationError(f"Invalid JSON: {e}") from e
 
     if not isinstance(data, dict):
-        raise LLMResponseValidationError(
-            f"Top-level must be an object, got {type(data).__name__}"
-        )
+        raise LLMResponseValidationError(f"Top-level must be an object, got {type(data).__name__}")
 
     try:
         validated = LLMExtractionResponse.model_validate(data)

@@ -118,8 +118,7 @@ def test_parse_answer_invalid_confidence_type() -> None:
 
 def test_strict_happy_path() -> None:
     answer = (
-        '{"values": {"Name": "Widget", "Color": "Red"}, '
-        '"confidence": {"Name": 0.9, "Color": 0.4}}'
+        '{"values": {"Name": "Widget", "Color": "Red"}, "confidence": {"Name": 0.9, "Color": 0.4}}'
     )
     fields = ["Name", "Color", "Size"]
 
@@ -131,7 +130,7 @@ def test_strict_happy_path() -> None:
 
 def test_strict_extracts_json_from_prose() -> None:
     answer = (
-        'Sure! Here you go:\n```json\n'
+        "Sure! Here you go:\n```json\n"
         '{"values": {"Name": "Gadget"}, "confidence": {"Name": 1.0}}\n```\nThanks.'
     )
     values, conf = parse_answer_strict(answer, ["Name"])
