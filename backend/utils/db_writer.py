@@ -7,7 +7,6 @@ import pandas as pd
 
 from backend.config import settings
 from backend.utils.credibility import score_source
-from backend.utils.migrations import run_migrations
 from backend.utils.schemas import TokenUsage
 
 logger = logging.getLogger(__name__)
@@ -44,14 +43,16 @@ def create_run(input_file: str, output_file: str, model_name: str, web_search_pr
 
 
 def init_db(fields: list[str], create_default_run: bool = True) -> None:
+    from backend.db.alembic_runner import ensure_alembic_initialized
+
+    # 1. Run Alembic migrations and handle any legacy bridge
+    ensure_alembic_initialized(settings.column_name, fields)
+
+    # 2. Open standard connection for post-initialization runs
     db_path = get_db_path()
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON")
     try:
-        run_migrations(conn, settings.column_name, fields)
-        conn.commit()
-
         if create_default_run:
             # Create or fetch a run for this session
             global _CURRENT_RUN_DB_PATH, _CURRENT_RUN_ID
