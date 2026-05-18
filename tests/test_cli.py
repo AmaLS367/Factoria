@@ -20,7 +20,7 @@ def test_process_single_item_collect_error(
     mock_research_agent.return_value = mock_agent_instance
 
     error_message = "Simulated collection failure"
-    mock_agent_instance.collect_item.side_effect = Exception(error_message)
+    mock_agent_instance.collect_item_with_confidence.side_effect = Exception(error_message)
 
     cli.process_single_item("FAIL-123")
 

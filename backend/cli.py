@@ -32,7 +32,7 @@ def process_single_item(item_id: str) -> None:
         agent = ResearchAgent(llm_client=LLMClient())
 
         try:
-            data = agent.collect_item(item_id)
+            data, conf, usage = agent.collect_item_with_confidence(item_id)
         except Exception as e:
             console.print(f"[bold red]Error:[/] {e}")
             return
@@ -61,7 +61,7 @@ def process_single_item(item_id: str) -> None:
 
     # Save to DB
     output_fields = ensure_sources_field(settings.target_fields)
-    save_single_item(item_id, data, output_fields)
+    save_single_item(item_id, data, output_fields, confidence=conf, token_usage=usage)
     console.print(f"\n[bold green]Success![/] [dim]({settings.db_path})[/]")
 
 

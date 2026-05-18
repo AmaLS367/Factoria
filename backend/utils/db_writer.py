@@ -283,11 +283,17 @@ def fetch_all(run_id: int | None = None) -> pd.DataFrame | None:
         items_df = items_df.rename(columns={"identifier_value": settings.column_name})
 
         # Fetch fields
+        if settings.review_enabled:
+            field_value_col = (
+                "CASE WHEN review_status = 'needs_review' "
+                "THEN NULL ELSE field_value END AS field_value"
+            )
+        else:
+            field_value_col = "field_value"
+
         if run_id is not None:
             fields_df = pd.read_sql_query(
-                "SELECT item_id, field_name, "
-                "CASE WHEN review_status = 'needs_review' "
-                "THEN NULL ELSE field_value END AS field_value "
+                f"SELECT item_id, field_name, {field_value_col} "
                 "FROM item_fields "
                 "WHERE item_id IN (SELECT id FROM items WHERE run_id = ?)",
                 conn,
@@ -295,10 +301,7 @@ def fetch_all(run_id: int | None = None) -> pd.DataFrame | None:
             )
         else:
             fields_df = pd.read_sql_query(
-                "SELECT item_id, field_name, "
-                "CASE WHEN review_status = 'needs_review' "
-                "THEN NULL ELSE field_value END AS field_value "
-                "FROM item_fields",
+                f"SELECT item_id, field_name, {field_value_col} FROM item_fields",
                 conn,
             )
 
