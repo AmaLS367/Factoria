@@ -12,7 +12,7 @@ from backend.tools.web_search import (
 )
 from backend.utils.cache import get_cache, make_cache_key, set_cache
 from backend.utils.parse import parse_answer, parse_answer_strict
-from backend.utils.schemas import LLMResponseValidationError
+from backend.utils.schemas import LLMResponseValidationError, TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +20,8 @@ SOURCES_FIELD = "Sources"
 
 
 class AnswerClient(Protocol):
-    def get_answer(self, prompt: str) -> str:
-        """Return an LLM answer for the prompt."""
+    def get_answer(self, prompt: str) -> tuple[str, TokenUsage]:
+        """Return an LLM answer and token usage for the prompt."""
 
 
 class SearchTool(Protocol):
@@ -42,7 +42,7 @@ class ResearchAgent:
 
     def collect_item_with_confidence(
         self, item_id: str, fields: list[str] | None = None
-    ) -> tuple[dict[str, str], dict[str, float | None]]:
+    ) -> tuple[dict[str, str], dict[str, float | None], TokenUsage]:
         output_fields = ensure_sources_field(fields or settings.target_fields)
         query = build_search_query(item_id, self.item_label, output_fields)
         search_results = self.search_tool.search(query)
@@ -61,6 +61,7 @@ class ResearchAgent:
         values = None
         confidence: dict[str, float | None] | None = None
         cache_key = None
+        accumulated_usage = TokenUsage()
 
         if use_cache:
             payload = {
@@ -93,7 +94,8 @@ class ResearchAgent:
             # so a later malformed retry can't discard usable earlier output.
             best_fallback: tuple[dict[str, str], dict[str, float | None]] | None = None
             for attempt in range(1, max_attempts + 1):
-                last_raw = self.llm_client.get_answer(prompt)
+                last_raw, attempt_usage = self.llm_client.get_answer(prompt)
+                accumulated_usage = accumulated_usage + attempt_usage
                 if not last_raw:
                     logger.warning(f"LLM returned empty response for {item_id}; skipping retry")
                     break
@@ -146,10 +148,10 @@ class ResearchAgent:
             values[SOURCES_FIELD] = format_sources(search_results)
 
         final_values = {k: v if v is not None else "" for k, v in values.items()}
-        return final_values, confidence
+        return final_values, confidence, accumulated_usage
 
     def collect_item(self, item_id: str, fields: list[str] | None = None) -> dict[str, str]:
-        values, _ = self.collect_item_with_confidence(item_id, fields)
+        values, _, _usage = self.collect_item_with_confidence(item_id, fields)
         return values
 
 

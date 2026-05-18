@@ -10,6 +10,8 @@ from promts.generator import generate_prompt
 from tools import web_search
 from tools.web_search import SearchResult, WebSearchTool
 
+from backend.utils.schemas import TokenUsage
+
 
 class DummyResponse:
     def __init__(self, payload: dict[str, object]) -> None:
@@ -26,9 +28,9 @@ class FakeLlmClient:
     def __init__(self) -> None:
         self.prompts: list[str] = []
 
-    def get_answer(self, prompt: str) -> str:
+    def get_answer(self, prompt: str) -> tuple[str, TokenUsage]:
         self.prompts.append(prompt)
-        return json.dumps({"Name": "Widget", "Sources": "Not found"})
+        return json.dumps({"Name": "Widget", "Sources": "Not found"}), TokenUsage()
 
 
 class FakeSearchTool:
@@ -231,12 +233,18 @@ def test_batch_main_uses_research_agent_and_persists_sources(
 
         def collect_item_with_confidence(
             self, item_id: str, fields: list[str] | None = None
-        ) -> tuple[dict[str, str], dict[str, float | None]]:
+        ) -> tuple[dict[str, str], dict[str, float | None], TokenUsage]:
             assert fields == ["Name", "Sources"]
-            return {"Name": f"Name {item_id}", "Sources": "https://example.com"}, {
-                "Name": 1.0,
-                "Sources": 1.0,
-            }
+            return (
+                {"Name": f"Name {item_id}", "Sources": "https://example.com"},
+                {
+                    "Name": 1.0,
+                    "Sources": 1.0,
+                },
+                TokenUsage(
+                    prompt_tokens=11, completion_tokens=4, total_tokens=15, estimated_cost_usd=0.001
+                ),
+            )
 
         def collect_item(self, item_id: str, fields: list[str] | None = None) -> dict[str, str]:
             assert fields == ["Name", "Sources"]
@@ -258,7 +266,9 @@ def test_batch_main_uses_research_agent_and_persists_sources(
     monkeypatch.setattr(
         batch_main,
         "save_results_bulk",
-        lambda data, fields, run_id=None, confidence_list=None: saved.extend(data),
+        lambda data, fields, run_id=None, confidence_list=None, token_usage_list=None: saved.extend(
+            data
+        ),
     )
     monkeypatch.setattr(batch_main, "fetch_all", lambda run_id=None: None)
     monkeypatch.setattr(batch_main, "format_output_excel", lambda filepath, df: None)

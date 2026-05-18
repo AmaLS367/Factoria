@@ -14,6 +14,7 @@ from backend.utils.jobs import (
     get_recent_jobs,
     update_job_progress,
     update_job_status,
+    update_job_token_usage,
     update_job_total_items,
 )
 
@@ -129,6 +130,33 @@ def test_update_job_total_items() -> None:
     job = get_job(job_id)
     assert job is not None
     assert job["total_items"] == 42
+
+
+def test_update_job_token_usage_accumulates() -> None:
+    job_id = create_job("in.xlsx", "out.xlsx", 0)
+
+    update_job_token_usage(job_id, 100, 50, 0.001)
+    update_job_token_usage(job_id, 100, 50, 0.001)
+
+    job = get_job(job_id)
+    assert job is not None
+    assert job["total_prompt_tokens"] == 200
+    assert job["total_completion_tokens"] == 100
+    assert job["total_llm_requests"] == 2
+    assert job["estimated_cost_usd"] == pytest.approx(0.002)
+
+
+def test_get_job_includes_token_fields() -> None:
+    job_id = create_job("in.xlsx", "out.xlsx", 0)
+
+    update_job_token_usage(job_id, 500, 200, 0.01)
+
+    job = get_job(job_id)
+    assert job is not None
+    assert job["total_prompt_tokens"] == 500
+    assert job["total_completion_tokens"] == 200
+    assert job["total_llm_requests"] == 1
+    assert job["estimated_cost_usd"] == pytest.approx(0.01)
 
 
 def test_get_job_returns_none_for_unknown_id() -> None:

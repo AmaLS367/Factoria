@@ -8,6 +8,7 @@ import pandas as pd
 from backend.config import settings
 from backend.utils.credibility import score_source
 from backend.utils.migrations import run_migrations
+from backend.utils.schemas import TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -109,12 +110,20 @@ def save_single_item(
     output_fields: list[str],
     run_id: int | None = None,
     confidence: dict[str, float | None] | None = None,
+    token_usage: TokenUsage | None = None,
 ) -> None:
     """Initialize the database and save a single item's data."""
     init_db(output_fields, create_default_run=(run_id is None))
     row_data = prepare_row_data(item_id, data, output_fields)
     conf_list = [confidence] if confidence is not None else None
-    save_results_bulk([row_data], output_fields, run_id=run_id, confidence_list=conf_list)
+    usage_list = [token_usage] if token_usage is not None else None
+    save_results_bulk(
+        [row_data],
+        output_fields,
+        run_id=run_id,
+        confidence_list=conf_list,
+        token_usage_list=usage_list,
+    )
 
 
 def save_results_bulk(
@@ -122,6 +131,7 @@ def save_results_bulk(
     fields: list[str],
     run_id: int | None = None,
     confidence_list: list[dict[str, float | None]] | None = None,
+    token_usage_list: list[TokenUsage] | None = None,
 ) -> None:
     if not data_list:
         return
@@ -167,6 +177,26 @@ def save_results_bulk(
                 # If item already exists, we skip inserting new fields/sources for it
                 # to mirror INSERT OR IGNORE behavior
                 continue
+
+            if token_usage_list is not None and row_index < len(token_usage_list):
+                usage = token_usage_list[row_index]
+                cur.execute(
+                    """
+                    UPDATE items
+                    SET prompt_tokens = ?,
+                        completion_tokens = ?,
+                        llm_requests = ?,
+                        estimated_cost_usd = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        usage.prompt_tokens,
+                        usage.completion_tokens,
+                        usage.effective_llm_requests,
+                        usage.estimated_cost_usd,
+                        db_item_id,
+                    ),
+                )
 
             for i, field_name in enumerate(all_fields):
                 if i == 0:

@@ -21,6 +21,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from backend.agents.research_agent import ResearchAgent  # noqa: E402
 from backend.config import settings  # noqa: E402
+from backend.utils.schemas import TokenUsage  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,9 +35,9 @@ class ScriptedLLM:
         self.answers = list(answers)
         self.calls = 0
 
-    def get_answer(self, prompt: str) -> str:
+    def get_answer(self, prompt: str) -> tuple[str, TokenUsage]:
         self.calls += 1
-        return self.answers.pop(0) if self.answers else ""
+        return self.answers.pop(0) if self.answers else "", TokenUsage()
 
 
 class EmptySearch:
@@ -62,7 +63,7 @@ def main() -> int:
             ]
         )
         agent = ResearchAgent(llm_client=llm, search_tool=EmptySearch())
-        values, conf = agent.collect_item_with_confidence("ITEM-001", ["Name"])
+        values, conf, _usage = agent.collect_item_with_confidence("ITEM-001", ["Name"])
         print(f"\nResult: values={values} conf={conf} calls={llm.calls}")
         assert llm.calls == 2, f"expected 2 calls, got {llm.calls}"
         assert values["Name"] == "Widget"
@@ -71,7 +72,7 @@ def main() -> int:
         settings.llm_validation_max_attempts = 3
         llm = ScriptedLLM(answers=['{"Name": "FromLegacy"}'] * 3)
         agent = ResearchAgent(llm_client=llm, search_tool=EmptySearch())
-        values, conf = agent.collect_item_with_confidence("ITEM-002", ["Name"])
+        values, conf, _usage = agent.collect_item_with_confidence("ITEM-002", ["Name"])
         print(f"\nResult: values={values} conf={conf} calls={llm.calls}")
         assert llm.calls == 3, f"expected 3 calls, got {llm.calls}"
         assert values["Name"] == "FromLegacy"
@@ -81,7 +82,7 @@ def main() -> int:
         settings.llm_validation_max_attempts = 3
         llm = ScriptedLLM(answers=[""])
         agent = ResearchAgent(llm_client=llm, search_tool=EmptySearch())
-        values, conf = agent.collect_item_with_confidence("ITEM-003", ["Name"])
+        values, conf, _usage = agent.collect_item_with_confidence("ITEM-003", ["Name"])
         print(f"\nResult: values={values} conf={conf} calls={llm.calls}")
         assert llm.calls == 1, f"expected 1 call, got {llm.calls}"
         assert values["Name"] == "Not found"

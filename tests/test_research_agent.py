@@ -5,6 +5,7 @@ import pytest
 
 from backend.agents.research_agent import ResearchAgent
 from backend.config import settings
+from backend.utils.schemas import TokenUsage
 
 
 class ScriptedLLMClient:
@@ -14,12 +15,14 @@ class ScriptedLLMClient:
         self.answers = list(answers)
         self.calls = 0
 
-    def get_answer(self, prompt: str) -> str:
+    def get_answer(self, prompt: str) -> tuple[str, TokenUsage]:
         self.calls += 1
         if self.answers:
-            return self.answers.pop(0)
+            return self.answers.pop(0), TokenUsage(
+                prompt_tokens=10, completion_tokens=5, total_tokens=15
+            )
         # Mimic a misbehaving provider that keeps emitting the same nonsense
-        return "fallback-empty"
+        return "fallback-empty", TokenUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15)
 
 
 class EmptySearchTool:
@@ -46,11 +49,12 @@ def test_retries_after_invalid_response_then_succeeds(
     )
     agent = ResearchAgent(llm_client=llm, search_tool=EmptySearchTool())
 
-    values, conf = agent.collect_item_with_confidence("item-1", ["Name"])
+    values, conf, usage = agent.collect_item_with_confidence("item-1", ["Name"])
 
     assert llm.calls == 2
     assert values["Name"] == "Widget"
     assert conf["Name"] == 0.8
+    assert usage == TokenUsage(prompt_tokens=20, completion_tokens=10, total_tokens=30)
 
 
 def test_falls_back_to_lenient_parser_after_exhausting_retries(
@@ -63,13 +67,14 @@ def test_falls_back_to_lenient_parser_after_exhausting_retries(
     llm = ScriptedLLMClient(answers=[legacy, legacy, legacy])
     agent = ResearchAgent(llm_client=llm, search_tool=EmptySearchTool())
 
-    values, conf = agent.collect_item_with_confidence("item-2", ["Name"])
+    values, conf, usage = agent.collect_item_with_confidence("item-2", ["Name"])
 
     # Three strict attempts, all failed, then lenient parser ran on last response
     assert llm.calls == 3
     # Lenient parser accepts legacy flat format — value extracted
     assert values["Name"] == "WidgetFromLegacy"
     assert conf["Name"] is None
+    assert usage == TokenUsage(prompt_tokens=30, completion_tokens=15, total_tokens=45)
 
 
 def test_no_retry_on_empty_llm_response(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -78,11 +83,12 @@ def test_no_retry_on_empty_llm_response(monkeypatch: pytest.MonkeyPatch) -> None
     llm = ScriptedLLMClient(answers=[""])
     agent = ResearchAgent(llm_client=llm, search_tool=EmptySearchTool())
 
-    values, conf = agent.collect_item_with_confidence("item-3", ["Name"])
+    values, conf, usage = agent.collect_item_with_confidence("item-3", ["Name"])
 
     assert llm.calls == 1
     assert values["Name"] == "Not found"
     assert conf["Name"] is None
+    assert usage == TokenUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15)
 
 
 def test_max_attempts_one_disables_retry(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -92,10 +98,11 @@ def test_max_attempts_one_disables_retry(monkeypatch: pytest.MonkeyPatch) -> Non
     llm = ScriptedLLMClient(answers=["totally-not-json"])
     agent = ResearchAgent(llm_client=llm, search_tool=EmptySearchTool())
 
-    values, _ = agent.collect_item_with_confidence("item-4", ["Name"])
+    values, _, usage = agent.collect_item_with_confidence("item-4", ["Name"])
 
     assert llm.calls == 1
     assert values["Name"] == "Not found"
+    assert usage == TokenUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15)
 
 
 def test_preserves_earlier_parseable_response_when_later_attempt_garbage(
@@ -111,11 +118,12 @@ def test_preserves_earlier_parseable_response_when_later_attempt_garbage(
     llm = ScriptedLLMClient(answers=['{"Name": "Widget"}', "garbage"])
     agent = ResearchAgent(llm_client=llm, search_tool=EmptySearchTool())
 
-    values, _ = agent.collect_item_with_confidence("item-regression", ["Name"])
+    values, _, usage = agent.collect_item_with_confidence("item-regression", ["Name"])
 
     assert llm.calls == 2
     # Must preserve "Widget" from attempt 1, not regress to "Not found"
     assert values["Name"] == "Widget"
+    assert usage == TokenUsage(prompt_tokens=20, completion_tokens=10, total_tokens=30)
 
 
 def test_first_attempt_success_does_not_retry(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -126,8 +134,9 @@ def test_first_attempt_success_does_not_retry(monkeypatch: pytest.MonkeyPatch) -
     )
     agent = ResearchAgent(llm_client=llm, search_tool=EmptySearchTool())
 
-    values, conf = agent.collect_item_with_confidence("item-5", ["Name"])
+    values, conf, usage = agent.collect_item_with_confidence("item-5", ["Name"])
 
     assert llm.calls == 1
     assert values["Name"] == "Widget"
     assert conf["Name"] == 0.95
+    assert usage == TokenUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15)
