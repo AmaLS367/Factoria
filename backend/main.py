@@ -1,3 +1,4 @@
+import json
 import os
 import sqlite3
 import sys
@@ -94,7 +95,21 @@ def main(
             return
         update_job_status(job_id, "running")
 
-    output_fields = ensure_sources_field(settings.target_fields)
+    job_record = get_job(job_id) if job_id else None
+
+    effective_fields_raw = job_record.get("target_fields") if job_record else None
+    try:
+        effective_fields = (
+            json.loads(effective_fields_raw) if effective_fields_raw else settings.target_fields
+        )
+    except Exception:
+        effective_fields = settings.target_fields
+
+    effective_item_label = (
+        job_record.get("item_label") if job_record else None
+    ) or settings.item_label
+
+    output_fields = ensure_sources_field(effective_fields)
 
     current_run_id = None
     if job_id:
@@ -137,7 +152,7 @@ def main(
             update_job_status(job_id, "failed", str(e))
         return
 
-    agent = ResearchAgent()
+    agent = ResearchAgent(item_label=effective_item_label)
     buffer: list[tuple[str, ...]] = []
     batch_confidence: list[dict[str, float | None]] = []
     existing_ids = get_all_existing_ids()

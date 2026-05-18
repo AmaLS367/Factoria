@@ -383,6 +383,11 @@ def quote_identifier(identifier: str) -> str:
     return f'"{identifier.replace(chr(34), chr(34) + chr(34))}"'
 
 
+def add_job_template_fields(cur: sqlite3.Cursor, _context: MigrationContext) -> None:
+    cur.execute("ALTER TABLE jobs ADD COLUMN target_fields TEXT")
+    cur.execute("ALTER TABLE jobs ADD COLUMN item_label TEXT")
+
+
 MIGRATIONS = [
     Migration(1, "create_results_table", create_results_table),
     Migration(2, "sync_configured_result_columns", sync_configured_result_columns),
@@ -391,4 +396,5 @@ MIGRATIONS = [
     Migration(5, "create_cache_table", create_cache_table),
     Migration(6, "add_job_import_config", add_job_import_config),
     Migration(7, "add_source_credibility_score", add_source_credibility_score),
+    Migration(8, "add_job_template_fields", add_job_template_fields),
 ]
