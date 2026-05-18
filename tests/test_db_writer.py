@@ -26,7 +26,14 @@ def mock_db_writer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         },
     )()
 
+    import backend.config
+    import backend.db.alembic_runner
+    import backend.utils.migrations
+
+    monkeypatch.setattr(backend.config, "settings", mock_settings)
     monkeypatch.setattr(db_writer, "settings", mock_settings)
+    monkeypatch.setattr(backend.utils.migrations, "settings", mock_settings)
+    monkeypatch.setattr(backend.db.alembic_runner, "settings", mock_settings)
 
     db_writer._CURRENT_RUN_ID = None
     db_writer._CURRENT_RUN_DB_PATH = None
@@ -120,6 +127,16 @@ def test_migration_converts_legacy_results_to_normalized_tables(mock_db_writer: 
 
 
 def test_init_db_records_applied_schema_migrations(mock_db_writer: Path) -> None:
+    # Seed legacy results table to trigger the legacy migrations bridge
+    conn = sqlite3.connect(mock_db_writer)
+    try:
+        conn.execute(
+            'CREATE TABLE results (id INTEGER PRIMARY KEY, "Part Number" TEXT UNIQUE, "Name" TEXT)'
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
     db_writer.init_db(["Name", "Sources"])
     db_writer.init_db(["Name", "Sources"])
 
@@ -340,7 +357,7 @@ def test_ensure_identifier_index_handles_error(
 
     cur = cast(sqlite3.Cursor, MockCursor())
 
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.WARNING, logger="backend.utils.migrations"):
         # Should not raise exception, just log a warning
         ensure_identifier_index(cur, "mock_column")
 
