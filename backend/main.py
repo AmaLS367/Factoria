@@ -1,3 +1,4 @@
+import json
 import os
 import sqlite3
 import sys
@@ -97,11 +98,9 @@ def main(
     job_record = get_job(job_id) if job_id else None
 
     effective_fields_raw = job_record.get("target_fields") if job_record else None
-    import json as _json
-
     try:
         effective_fields = (
-            _json.loads(effective_fields_raw) if effective_fields_raw else settings.target_fields
+            json.loads(effective_fields_raw) if effective_fields_raw else settings.target_fields
         )
     except Exception:
         effective_fields = settings.target_fields
