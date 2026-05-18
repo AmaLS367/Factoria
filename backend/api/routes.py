@@ -204,9 +204,9 @@ async def preview_excel_file(
             file_type = "xlsx"
 
         assert isinstance(df, pd.DataFrame)
-        columns = [str(c) for c in df.columns.tolist()]
+        columns = [f"{c}" for c in df.columns.tolist()]
         sample_rows = [
-            {str(k): (None if pd.isnull(v) else v) for k, v in row.items()}
+            {f"{k}": (None if pd.isnull(v) else v) for k, v in row.items()}
             for row in df.head(3).to_dict(orient="records")
         ]
 

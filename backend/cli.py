@@ -55,7 +55,7 @@ def process_single_item(item_id: str) -> None:
     for field, value in data.items():
         if field == settings.column_name:
             continue
-        table.add_row(field, str(value))
+        table.add_row(field, value or "")
 
     console.print(table)
 

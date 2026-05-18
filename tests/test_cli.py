@@ -119,5 +119,8 @@ def test_run_review_mode_interactive_edit(
     with patch("backend.cli.console", mock_console):
         cli.run_review_mode(limit=5, as_json=False)
         mock_update.assert_called_once_with(
-            field_id=30, status="corrected", field_value="new description", reviewer_note="fixed typo"
+            field_id=30,
+            status="corrected",
+            field_value="new description",
+            reviewer_note="fixed typo",
         )
