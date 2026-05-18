@@ -91,3 +91,24 @@ export interface SchemaTemplate {
   target_fields: string[];
   is_builtin: boolean;
 }
+
+export interface ReviewField {
+  field_id: number;
+  job_id: string | null;
+  identifier_column: string;
+  identifier_value: string;
+  field_name: string;
+  field_value: string | null;
+  confidence: number | null;
+  review_status: "needs_review" | "auto_accepted" | "approved" | "corrected" | "rejected";
+  reviewer_note: string | null;
+  reviewed_at: string | null;
+}
+
+export interface ReviewSummary {
+  needs_review: number;
+  auto_accepted: number;
+  approved: number;
+  corrected: number;
+  rejected: number;
+}

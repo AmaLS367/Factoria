@@ -1,4 +1,4 @@
-import type { ItemField, SchemaTemplate } from "./types";
+import type { ItemField, ReviewField, SchemaTemplate } from "./types";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
@@ -164,4 +164,54 @@ export async function deleteTemplate(slug: string): Promise<void> {
     },
   );
   if (!res.ok) throw new Error("Failed to delete template");
+}
+
+export async function listReviewFields(
+  status: string = "needs_review",
+  limit: number = 100,
+  offset: number = 0,
+  jobId?: string,
+): Promise<ReviewField[]> {
+  const params = new URLSearchParams({
+    status,
+    limit: String(limit),
+    offset: String(offset),
+  });
+  if (jobId) params.set("job_id", jobId);
+  const res = await fetch(`${API_BASE_URL}/reviews/fields?${params}`);
+  if (!res.ok) throw new Error("Failed to fetch review fields");
+  return res.json();
+}
+
+export async function reviewField(
+  fieldId: number,
+  status: "approved" | "corrected" | "rejected",
+  fieldValue?: string,
+  reviewerNote?: string,
+): Promise<ReviewField> {
+  const res = await fetch(`${API_BASE_URL}/reviews/fields/${fieldId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      status,
+      field_value: fieldValue !== undefined ? fieldValue : null,
+      reviewer_note: reviewerNote !== undefined ? reviewerNote : null,
+    }),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || "Failed to update review field");
+  }
+  return res.json();
+}
+
+export async function fetchReviewSummary(
+  jobId?: string,
+): Promise<Record<string, number>> {
+  const url = jobId
+    ? `${API_BASE_URL}/reviews/summary?job_id=${encodeURIComponent(jobId)}`
+    : `${API_BASE_URL}/reviews/summary`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Failed to fetch review summary");
+  return res.json();
 }
