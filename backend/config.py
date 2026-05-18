@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     retry_base_delay_seconds: float = 1.0
     retry_max_delay_seconds: float = 60.0
 
+    # LLM Validation Settings
+    llm_validation_max_attempts: int = 2
+
     # API Settings (Legacy)
     openai_api_key: str = ""
     openai_base_url: str = "https://api.deepseek.com/v1"
