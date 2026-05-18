@@ -31,8 +31,10 @@ from backend.utils.jobs import (
     get_job,
     update_job_progress,
     update_job_status,
+    update_job_token_usage,
     update_job_total_items,
 )
+from backend.utils.schemas import TokenUsage
 
 # Setup logging
 logging.basicConfig(
@@ -155,6 +157,7 @@ def main(
     agent = ResearchAgent(item_label=effective_item_label)
     buffer: list[tuple[str, ...]] = []
     batch_confidence: list[dict[str, float | None]] = []
+    batch_token_usage: list[TokenUsage] = []
     existing_ids = get_all_existing_ids()
     try:
         col_idx = list(df.columns).index(effective_column) + 1
@@ -178,6 +181,7 @@ def main(
             processed_in_batch = 0
             skipped_in_batch = 0
             failed_in_batch = 0
+            batch_usage = TokenUsage()
 
             for row in tqdm(batch_df.itertuples(), total=len(batch_df), desc="Processing batch"):
                 item_id = str(row[col_idx])
@@ -188,10 +192,15 @@ def main(
                     continue
 
                 try:
-                    parsed, conf = agent.collect_item_with_confidence(item_id, output_fields)
+                    parsed, conf, item_usage = agent.collect_item_with_confidence(
+                        item_id,
+                        output_fields,
+                    )
                     row_data = prepare_row_data(item_id, parsed, output_fields)
                     buffer.append(row_data)
                     batch_confidence.append(conf)
+                    batch_token_usage.append(item_usage)
+                    batch_usage = batch_usage + item_usage
                     processed_in_batch += 1
                 except Exception as e:
                     logger.error(f"Failed processing item {item_id}: {e}")
@@ -199,10 +208,15 @@ def main(
 
             if buffer:
                 save_results_bulk(
-                    buffer, output_fields, run_id=current_run_id, confidence_list=batch_confidence
+                    buffer,
+                    output_fields,
+                    run_id=current_run_id,
+                    confidence_list=batch_confidence,
+                    token_usage_list=batch_token_usage,
                 )
                 buffer.clear()
                 batch_confidence.clear()
+                batch_token_usage.clear()
 
             if job_id:
                 update_job_progress(
@@ -211,6 +225,14 @@ def main(
                     skipped=skipped_in_batch,
                     failed=failed_in_batch,
                 )
+                if batch_usage.effective_llm_requests:
+                    update_job_token_usage(
+                        job_id,
+                        batch_usage.prompt_tokens,
+                        batch_usage.completion_tokens,
+                        batch_usage.estimated_cost_usd,
+                        batch_usage.effective_llm_requests,
+                    )
 
         final_df = fetch_all(run_id=current_run_id if job_id else None)
         format_output_excel(output_file_path, final_df)
