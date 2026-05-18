@@ -34,7 +34,7 @@ from backend.utils.jobs import (
     update_job_token_usage,
     update_job_total_items,
 )
-from backend.utils.schemas import TokenUsage
+from backend.utils.schemas import LLMResponseValidationError, TokenUsage
 
 # Setup logging
 logging.basicConfig(
@@ -181,6 +181,7 @@ def main(
             processed_in_batch = 0
             skipped_in_batch = 0
             failed_in_batch = 0
+
             batch_usage = TokenUsage()
 
             for row in tqdm(batch_df.itertuples(), total=len(batch_df), desc="Processing batch"):
@@ -191,19 +192,27 @@ def main(
                     skipped_in_batch += 1
                     continue
 
+                if job_id:
+                    current_job = get_job(job_id)
+                    if current_job and current_job.get("status") == "cancelled":
+                        logger.info(f"Job {job_id} was cancelled. Stopping item processing.")
+                        return
+
                 try:
                     parsed, conf, item_usage = agent.collect_item_with_confidence(
-                        item_id,
-                        output_fields,
+                        item_id, output_fields
                     )
+                    batch_usage = batch_usage + item_usage
                     row_data = prepare_row_data(item_id, parsed, output_fields)
                     buffer.append(row_data)
                     batch_confidence.append(conf)
                     batch_token_usage.append(item_usage)
-                    batch_usage = batch_usage + item_usage
                     processed_in_batch += 1
+                except LLMResponseValidationError as e:
+                    logger.error(f"Validation error for item {item_id}: {e}")
+                    failed_in_batch += 1
                 except Exception as e:
-                    logger.error(f"Failed processing item {item_id}: {e}")
+                    logger.error(f"Error processing item {item_id}: {e}")
                     failed_in_batch += 1
 
             if buffer:
@@ -214,9 +223,9 @@ def main(
                     confidence_list=batch_confidence,
                     token_usage_list=batch_token_usage,
                 )
-                buffer.clear()
-                batch_confidence.clear()
-                batch_token_usage.clear()
+                buffer = []
+                batch_confidence = []
+                batch_token_usage = []
 
             if job_id:
                 update_job_progress(
@@ -225,14 +234,12 @@ def main(
                     skipped=skipped_in_batch,
                     failed=failed_in_batch,
                 )
-                if batch_usage.effective_llm_requests:
-                    update_job_token_usage(
-                        job_id,
-                        batch_usage.prompt_tokens,
-                        batch_usage.completion_tokens,
-                        batch_usage.estimated_cost_usd,
-                        batch_usage.effective_llm_requests,
-                    )
+                update_job_token_usage(
+                    job_id,
+                    batch_usage.prompt_tokens,
+                    batch_usage.completion_tokens,
+                    batch_usage.estimated_cost_usd,
+                )
 
         final_df = fetch_all(run_id=current_run_id if job_id else None)
         format_output_excel(output_file_path, final_df)

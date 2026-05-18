@@ -2,6 +2,7 @@ import sqlite3
 import time
 from collections.abc import Generator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -132,33 +133,6 @@ def test_update_job_total_items() -> None:
     assert job["total_items"] == 42
 
 
-def test_update_job_token_usage_accumulates() -> None:
-    job_id = create_job("in.xlsx", "out.xlsx", 0)
-
-    update_job_token_usage(job_id, 100, 50, 0.001)
-    update_job_token_usage(job_id, 100, 50, 0.001)
-
-    job = get_job(job_id)
-    assert job is not None
-    assert job["total_prompt_tokens"] == 200
-    assert job["total_completion_tokens"] == 100
-    assert job["total_llm_requests"] == 2
-    assert job["estimated_cost_usd"] == pytest.approx(0.002)
-
-
-def test_get_job_includes_token_fields() -> None:
-    job_id = create_job("in.xlsx", "out.xlsx", 0)
-
-    update_job_token_usage(job_id, 500, 200, 0.01)
-
-    job = get_job(job_id)
-    assert job is not None
-    assert job["total_prompt_tokens"] == 500
-    assert job["total_completion_tokens"] == 200
-    assert job["total_llm_requests"] == 1
-    assert job["estimated_cost_usd"] == pytest.approx(0.01)
-
-
 def test_get_job_returns_none_for_unknown_id() -> None:
     assert get_job("does-not-exist") is None
 
@@ -203,3 +177,33 @@ def test_create_job_with_template_fields_roundtrips() -> None:
     assert job["item_label"] == "component"
     # target_fields stored as JSON string
     assert job["target_fields"] == '["Name", "Material"]'
+
+
+def test_update_job_token_usage_accumulates(setup_test_db: Any) -> None:
+    job_id = "job-tokens-1"
+    create_job(job_id, "input.xlsx", 1)
+
+    update_job_token_usage(job_id, 100, 50, 0.001)
+    update_job_token_usage(job_id, 100, 50, 0.001)
+
+    job = get_job(job_id)
+    assert job and job["total_prompt_tokens"] == 200
+    assert job and job["total_completion_tokens"] == 100
+    assert job and job["total_llm_requests"] == 2
+    assert job and job["estimated_cost_usd"] == 0.002
+
+
+def test_get_job_includes_token_fields(setup_test_db: Any) -> None:
+    job_id = "job-tokens-2"
+    create_job(job_id, "in.xlsx", 1)
+    update_job_token_usage(job_id, 500, 200, 0.01)
+
+    job = get_job(job_id)
+    assert job and "total_prompt_tokens" in job
+    assert job and "total_completion_tokens" in job
+    assert job and "total_llm_requests" in job
+    assert job and "estimated_cost_usd" in job
+    assert job and job["total_prompt_tokens"] == 500
+    assert job and job["total_completion_tokens"] == 200
+    assert job and job["total_llm_requests"] == 1
+    assert job and job["estimated_cost_usd"] == 0.01
