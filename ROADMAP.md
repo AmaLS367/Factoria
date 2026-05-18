@@ -16,7 +16,7 @@ Legend: ✅ done · 🔲 pending
 | 8 | **Smart deduplication & caching** — skip LLM/web-search for already-collected items; cache keyed by item/query/provider/model | ✅ |
 | 9 | **Source credibility & citation quality** — rank sources, store title/url/snippet/provider/retrieved_at, credibility score | ✅ |
 | 10 | **Schema templates / project presets** — saved templates for spare parts, suppliers, products, companies, technical specs, etc. | ✅ |
-| 11 | **LLM response validation via Pydantic** — strict schemas, retries on invalid output, field-level validation | 🔲 |
+| 11 | **LLM response validation via Pydantic** — strict schemas, retries on invalid output, field-level validation | ✅ |
 | 12 | **Retry/backoff/rate-limit layer** — universal retry for LLM and search providers, limits, cooldown, proper error diagnostics | ✅ |
 | 13 | **Observability & structured logs** — job logs, per-item logs, latency, provider errors; GET /logs endpoint + Logs tab in UI | ✅ |
 | 14 | **Cost/token accounting** — track tokens, estimated cost, request count, per-job pricing, exportable report | 🔲 |
@@ -29,4 +29,4 @@ Legend: ✅ done · 🔲 pending
 
 ---
 
-**Progress: 12 / 20 done**
+**Progress: 13 / 20 done**
