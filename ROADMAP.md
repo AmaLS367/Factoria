@@ -19,7 +19,7 @@ Legend: ✅ done · 🔲 pending
 | 11 | **LLM response validation via Pydantic** — strict schemas, retries on invalid output, field-level validation                                                    | ✅     |
 | 12 | **Retry/backoff/rate-limit layer** — universal retry for LLM and search providers, limits, cooldown, proper error diagnostics                                   | ✅     |
 | 13 | **Observability & structured logs** — job logs, per-item logs, latency, provider errors; GET /logs endpoint + Logs tab in UI                                    | ✅     |
-| 14 | **Cost/token accounting** — track tokens, estimated cost, request count, per-job pricing, exportable report                                                     | 🔲     |
+| 14 | **Cost/token accounting** — track tokens, estimated cost, request count, per-job pricing, exportable report                                                     | ✅     |
 | 15 | **Human review workflow** — UI/CLI mode to manually confirm or correct uncertain/empty/low-confidence fields                                                    | 🔲     |
 | 16 | **Confidence scoring** — per-field confidence: found in sources / corroborated across sources / model guessed / not found                                       | ✅     |
 | 17 | **Plugin/tool architecture for agents** — unified registry for tools: web search, file lookup, DB lookup, vendor APIs, browser extraction                       | 🔲     |
@@ -29,4 +29,4 @@ Legend: ✅ done · 🔲 pending
 
 ---
 
-**Progress: 14 / 20 done**
+**Progress: 15 / 20 done**

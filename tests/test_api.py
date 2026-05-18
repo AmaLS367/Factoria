@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
 from backend.config import settings
+from backend.utils.schemas import TokenUsage
 
 sys.path.insert(0, os.path.abspath("backend"))
 from api.app import app
@@ -77,6 +78,9 @@ def test_collect_item(mock_research_agent: MagicMock, mock_save_single_item: Mag
     mock_agent_instance.collect_item_with_confidence.return_value = (
         {"Name": "Test Item", "Weight": "1kg"},
         {"Name": 1.0, "Weight": 0.8},
+        TokenUsage(
+            prompt_tokens=12, completion_tokens=4, total_tokens=16, estimated_cost_usd=0.002
+        ),
     )
     mock_research_agent.return_value = mock_agent_instance
 
@@ -85,6 +89,12 @@ def test_collect_item(mock_research_agent: MagicMock, mock_save_single_item: Mag
     data = response.json()
     assert data["Name"] == "Test Item"
     mock_save_single_item.assert_called_once()
+    assert mock_save_single_item.call_args.kwargs["token_usage"] == TokenUsage(
+        prompt_tokens=12,
+        completion_tokens=4,
+        total_tokens=16,
+        estimated_cost_usd=0.002,
+    )
 
 
 @patch("backend.api.routes.os.path.exists")
@@ -164,6 +174,42 @@ def test_get_job_not_found(mock_get_job: MagicMock) -> None:
     mock_get_job.return_value = None
     response = client.get("/jobs/test-123")
     assert response.status_code == 404
+
+
+@patch("backend.api.routes.get_job")
+def test_cost_report_unknown_job_returns_404(mock_get_job: MagicMock) -> None:
+    mock_get_job.return_value = None
+
+    response = client.get("/jobs/nonexistent-id/cost-report")
+
+    assert response.status_code == 404
+
+
+@patch("backend.api.routes.get_job")
+def test_cost_report_new_job_returns_zero_counters(mock_get_job: MagicMock) -> None:
+    mock_get_job.return_value = {
+        "job_id": "job-1",
+        "status": "queued",
+        "total_prompt_tokens": 0,
+        "total_completion_tokens": 0,
+        "total_llm_requests": 0,
+        "estimated_cost_usd": 0.0,
+    }
+
+    response = client.get("/jobs/job-1/cost-report")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "job_id": "job-1",
+        "status": "queued",
+        "total_prompt_tokens": 0,
+        "total_completion_tokens": 0,
+        "total_tokens": 0,
+        "total_llm_requests": 0,
+        "estimated_cost_usd": 0.0,
+        "model": settings.resolved_llm_model,
+        "provider": settings.resolved_llm_provider,
+    }
 
 
 @patch("backend.api.routes.os.makedirs")
@@ -516,7 +562,11 @@ def test_collect_item_save_failure() -> None:
         patch("backend.api.routes.save_single_item") as mock_save,
     ):
         instance = MagicMock()
-        instance.collect_item_with_confidence.return_value = ({"Name": "X"}, {"Name": 0.5})
+        instance.collect_item_with_confidence.return_value = (
+            {"Name": "X"},
+            {"Name": 0.5},
+            TokenUsage(),
+        )
         mock_agent.return_value = instance
         mock_save.side_effect = RuntimeError("db down")
         response = client.post("/items/collect", json={"item_id": "x"})

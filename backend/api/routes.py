@@ -153,13 +153,13 @@ def collect_item(request: CollectRequest) -> dict[str, Any]:
     output_fields = ensure_sources_field(settings.target_fields)
 
     try:
-        data, conf = agent.collect_item_with_confidence(item_id, output_fields)
+        data, conf, token_usage = agent.collect_item_with_confidence(item_id, output_fields)
     except Exception as e:
         logger.error(f"Item collection failed: {e}")
         raise HTTPException(status_code=500, detail="Item collection failed") from e
 
     try:
-        save_single_item(item_id, data, output_fields, confidence=conf)
+        save_single_item(item_id, data, output_fields, confidence=conf, token_usage=token_usage)
     except Exception as e:
         logger.error(f"Database error: {e}")
         raise HTTPException(status_code=500, detail="Database error") from e
@@ -349,6 +349,26 @@ def get_job_status(job_id: str) -> dict[str, Any]:
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+
+
+@router.get("/jobs/{job_id}/cost-report")
+def get_job_cost_report(job_id: str) -> dict[str, Any]:
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    prompt_tokens = job.get("total_prompt_tokens") or 0
+    completion_tokens = job.get("total_completion_tokens") or 0
+    return {
+        "job_id": job_id,
+        "status": job["status"],
+        "total_prompt_tokens": prompt_tokens,
+        "total_completion_tokens": completion_tokens,
+        "total_tokens": prompt_tokens + completion_tokens,
+        "total_llm_requests": job.get("total_llm_requests") or 0,
+        "estimated_cost_usd": job.get("estimated_cost_usd") or 0.0,
+        "model": settings.resolved_llm_model,
+        "provider": settings.resolved_llm_provider,
+    }
 
 
 @router.get("/jobs/{job_id}/export", response_class=FileResponse, response_model=None)

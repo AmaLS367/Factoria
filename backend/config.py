@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     llm_base_url: str = ""
     llm_model: str = ""
     llm_timeout_seconds: int = 60
+    llm_cost_per_1k_input_tokens: float = 0.0
+    llm_cost_per_1k_output_tokens: float = 0.0
 
     @property
     def resolved_llm_provider(self) -> str:

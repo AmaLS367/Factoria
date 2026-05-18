@@ -4,6 +4,8 @@ from pathlib import Path
 import pytest
 from utils import db_writer
 
+from backend.utils.schemas import TokenUsage
+
 
 @pytest.fixture
 def mock_db_writer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -137,8 +139,48 @@ def test_init_db_records_applied_schema_migrations(mock_db_writer: Path) -> None
         (6, "add_job_import_config"),
         (7, "add_source_credibility_score"),
         (8, "add_job_template_fields"),
+        (9, "add_job_token_accounting"),
+        (10, "add_item_token_accounting"),
     ]
     assert migration_count == len(migration_rows)
+
+
+def test_token_accounting_columns_exist_with_zero_defaults(mock_db_writer: Path) -> None:
+    db_writer.init_db(["Name"])
+    db_writer.save_results_bulk([("A", "Apple")], ["Name"])
+
+    conn = sqlite3.connect(mock_db_writer)
+    conn.row_factory = sqlite3.Row
+    try:
+        job_columns = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+        item_columns = {row["name"] for row in conn.execute("PRAGMA table_info(items)").fetchall()}
+        item = conn.execute(
+            """
+            SELECT prompt_tokens, completion_tokens, llm_requests, estimated_cost_usd
+            FROM items WHERE identifier_value = 'A'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert {
+        "total_prompt_tokens",
+        "total_completion_tokens",
+        "total_llm_requests",
+        "estimated_cost_usd",
+    }.issubset(job_columns)
+    assert {
+        "prompt_tokens",
+        "completion_tokens",
+        "llm_requests",
+        "estimated_cost_usd",
+    }.issubset(item_columns)
+    assert dict(item) == {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "llm_requests": 0,
+        "estimated_cost_usd": 0.0,
+    }
 
 
 def test_save_results_bulk_idempotency(mock_db_writer: Path) -> None:
@@ -365,3 +407,39 @@ FROM item_fields ORDER BY item_id, field_name"""
         assert results[3]["confidence"] == 1.0
     finally:
         conn.close()
+
+
+def test_save_results_bulk_stores_token_usage(mock_db_writer: Path) -> None:
+    db_writer.init_db(["Name"])
+
+    db_writer.save_results_bulk(
+        [("A", "Apple")],
+        ["Name"],
+        token_usage_list=[
+            TokenUsage(
+                prompt_tokens=100,
+                completion_tokens=25,
+                total_tokens=125,
+                estimated_cost_usd=0.00125,
+            )
+        ],
+    )
+
+    conn = sqlite3.connect(mock_db_writer)
+    conn.row_factory = sqlite3.Row
+    try:
+        item = conn.execute(
+            """
+            SELECT prompt_tokens, completion_tokens, llm_requests, estimated_cost_usd
+            FROM items WHERE identifier_value = 'A'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert dict(item) == {
+        "prompt_tokens": 100,
+        "completion_tokens": 25,
+        "llm_requests": 1,
+        "estimated_cost_usd": 0.00125,
+    }

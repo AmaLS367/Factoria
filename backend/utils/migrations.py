@@ -388,6 +388,20 @@ def add_job_template_fields(cur: sqlite3.Cursor, _context: MigrationContext) -> 
     cur.execute("ALTER TABLE jobs ADD COLUMN item_label TEXT")
 
 
+def add_job_token_accounting(cur: sqlite3.Cursor, _context: MigrationContext) -> None:
+    cur.execute("ALTER TABLE jobs ADD COLUMN total_prompt_tokens INTEGER DEFAULT 0")
+    cur.execute("ALTER TABLE jobs ADD COLUMN total_completion_tokens INTEGER DEFAULT 0")
+    cur.execute("ALTER TABLE jobs ADD COLUMN total_llm_requests INTEGER DEFAULT 0")
+    cur.execute("ALTER TABLE jobs ADD COLUMN estimated_cost_usd REAL DEFAULT 0.0")
+
+
+def add_item_token_accounting(cur: sqlite3.Cursor, _context: MigrationContext) -> None:
+    cur.execute("ALTER TABLE items ADD COLUMN prompt_tokens INTEGER DEFAULT 0")
+    cur.execute("ALTER TABLE items ADD COLUMN completion_tokens INTEGER DEFAULT 0")
+    cur.execute("ALTER TABLE items ADD COLUMN llm_requests INTEGER DEFAULT 0")
+    cur.execute("ALTER TABLE items ADD COLUMN estimated_cost_usd REAL DEFAULT 0.0")
+
+
 MIGRATIONS = [
     Migration(1, "create_results_table", create_results_table),
     Migration(2, "sync_configured_result_columns", sync_configured_result_columns),
@@ -397,4 +411,6 @@ MIGRATIONS = [
     Migration(6, "add_job_import_config", add_job_import_config),
     Migration(7, "add_source_credibility_score", add_source_credibility_score),
     Migration(8, "add_job_template_fields", add_job_template_fields),
+    Migration(9, "add_job_token_accounting", add_job_token_accounting),
+    Migration(10, "add_item_token_accounting", add_item_token_accounting),
 ]
