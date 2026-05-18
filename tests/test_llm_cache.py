@@ -8,7 +8,10 @@ from backend.config import settings
 
 
 class FakeLLMClient:
-    def __init__(self, answer: str = '{"field1": "value1"}') -> None:
+    def __init__(
+        self,
+        answer: str = '{"values": {"field1": "value1"}, "confidence": {"field1": 0.9}}',
+    ) -> None:
         self.answer = answer
         self.calls = 0
 
