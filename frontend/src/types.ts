@@ -81,3 +81,13 @@ export interface ItemField {
   field_value: string;
   confidence: number | null;
 }
+
+export interface SchemaTemplate {
+  slug: string;
+  name: string;
+  description: string;
+  item_label: string;
+  column_name: string;
+  target_fields: string[];
+  is_builtin: boolean;
+}

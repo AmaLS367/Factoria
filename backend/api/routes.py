@@ -1,6 +1,8 @@
 import collections
 import csv
+import dataclasses
 import io
+import json as _json
 import logging
 import os
 import re
@@ -20,9 +22,79 @@ from backend.main import main as run_excel_job
 from backend.tools.web_search import WebSearchTool
 from backend.utils.db_writer import fetch_all, get_db_path, save_single_item
 from backend.utils.jobs import cancel_job, create_job, get_job, get_recent_jobs
+from backend.utils.templates import (
+    Template as SchemaTemplate,
+)
+from backend.utils.templates import (
+    delete_template,
+    get_template,
+    list_templates,
+    save_template,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+@router.get("/templates")
+def list_schema_templates() -> list[dict[str, Any]]:
+    return [dataclasses.asdict(t) for t in list_templates()]
+
+
+@router.get("/templates/{slug}")
+def get_schema_template(slug: str) -> dict[str, Any]:
+    t = get_template(slug)
+    if not t:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return dataclasses.asdict(t)
+
+
+class TemplateCreateRequest(BaseModel):
+    slug: str
+    name: str
+    description: str = ""
+    item_label: str
+    column_name: str
+    target_fields: list[str]
+
+
+@router.post("/templates", status_code=201)
+def create_schema_template(request: TemplateCreateRequest) -> dict[str, Any]:
+    if not re.match(r"^[a-z0-9-]+$", request.slug):
+        raise HTTPException(
+            status_code=400, detail="Slug must contain only lowercase letters, numbers, and hyphens"
+        )
+    if len(request.slug) < 2 or len(request.slug) > 64:
+        raise HTTPException(status_code=400, detail="Slug must be between 2 and 64 characters long")
+    if not request.target_fields:
+        raise HTTPException(status_code=400, detail="target_fields cannot be empty")
+    if len(request.target_fields) > 50:
+        raise HTTPException(status_code=400, detail="target_fields cannot exceed 50 fields")
+
+    t = SchemaTemplate(
+        slug=request.slug,
+        name=request.name,
+        description=request.description,
+        item_label=request.item_label,
+        column_name=request.column_name,
+        target_fields=request.target_fields,
+        is_builtin=False,
+    )
+    try:
+        save_template(t)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    return dataclasses.asdict(t)
+
+
+@router.delete("/templates/{slug}", status_code=204)
+def delete_schema_template(slug: str) -> None:
+    try:
+        found = delete_template(slug)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    if not found:
+        raise HTTPException(status_code=404, detail="Template not found")
 
 
 class SearchRequest(BaseModel):
@@ -149,7 +221,22 @@ async def start_excel_job(
     file: UploadFile = File(...),  # noqa: B008
     sheet_name: str | None = Form(default=None),  # noqa: B008
     column_name: str | None = Form(default=None),  # noqa: B008
+    target_fields: str | None = Form(default=None),  # noqa: B008
+    item_label: str | None = Form(default=None),  # noqa: B008
 ) -> dict[str, str]:
+    parsed_fields: list[str] | None = None
+    if target_fields:
+        try:
+            parsed_fields = _json.loads(target_fields)
+            if not isinstance(parsed_fields, list) or not all(
+                isinstance(f, str) for f in parsed_fields
+            ):
+                raise ValueError("target_fields must be a JSON array of strings")
+        except (ValueError, TypeError) as e:
+            raise HTTPException(
+                status_code=400, detail="target_fields must be a JSON array of strings"
+            ) from e
+
     try:
         job_id = str(uuid.uuid4())
 
@@ -174,6 +261,8 @@ async def start_excel_job(
             job_id=job_id,
             sheet_name=sheet_name,
             column_name=column_name,
+            target_fields=parsed_fields,
+            item_label=item_label or None,
         )
         background_tasks.add_task(
             run_excel_job, job_id, job_input_file, job_output_file, sheet_name, column_name
@@ -222,6 +311,16 @@ def retry_excel_job(job_id: str, background_tasks: BackgroundTasks) -> dict[str,
     sheet_name = job.get("sheet_name")
     column_name = job.get("column_name")
 
+    target_fields_raw = job.get("target_fields")
+    parsed_fields: list[str] | None = None
+    if target_fields_raw:
+        try:
+            parsed_fields = _json.loads(target_fields_raw)
+        except Exception:
+            pass
+
+    item_label = job.get("item_label")
+
     create_job(
         old_input,
         new_output,
@@ -229,6 +328,8 @@ def retry_excel_job(job_id: str, background_tasks: BackgroundTasks) -> dict[str,
         job_id=new_job_id,
         sheet_name=sheet_name,
         column_name=column_name,
+        target_fields=parsed_fields,
+        item_label=item_label,
     )
     background_tasks.add_task(
         run_excel_job, new_job_id, old_input, new_output, sheet_name, column_name
