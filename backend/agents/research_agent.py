@@ -95,16 +95,12 @@ class ResearchAgent:
             for attempt in range(1, max_attempts + 1):
                 last_raw = self.llm_client.get_answer(prompt)
                 if not last_raw:
-                    logger.warning(
-                        f"LLM returned empty response for {item_id}; skipping retry"
-                    )
+                    logger.warning(f"LLM returned empty response for {item_id}; skipping retry")
                     break
                 try:
                     values, confidence = parse_answer_strict(last_raw, output_fields)
                     if attempt > 1:
-                        logger.info(
-                            f"LLM response validated on attempt {attempt} for {item_id}"
-                        )
+                        logger.info(f"LLM response validated on attempt {attempt} for {item_id}")
                     break
                 except LLMResponseValidationError as e:
                     logger.warning(
@@ -122,9 +118,7 @@ class ResearchAgent:
 
             if values is None or confidence is None:
                 if best_fallback is not None:
-                    logger.warning(
-                        f"Using parseable result from earlier attempt for {item_id}"
-                    )
+                    logger.warning(f"Using parseable result from earlier attempt for {item_id}")
                     values, confidence = best_fallback
                 else:
                     logger.warning(f"Falling back to lenient parser for {item_id}")

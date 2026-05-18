@@ -366,9 +366,7 @@ def test_preview_invalid_file() -> None:
 
 @patch("backend.api.routes.cancel_job")
 @patch("backend.api.routes.get_job")
-def test_cancel_job_happy_path(
-    mock_get_job: MagicMock, mock_cancel_job: MagicMock
-) -> None:
+def test_cancel_job_happy_path(mock_get_job: MagicMock, mock_cancel_job: MagicMock) -> None:
     mock_get_job.return_value = {"job_id": "abc", "status": "running"}
     mock_cancel_job.return_value = True
     response = client.post("/jobs/abc/cancel")
@@ -432,9 +430,7 @@ def test_retry_job_wrong_status(mock_get_job: MagicMock) -> None:
 
 @patch("backend.api.routes.os.path.exists")
 @patch("backend.api.routes.get_job")
-def test_retry_job_missing_input_file(
-    mock_get_job: MagicMock, mock_exists: MagicMock
-) -> None:
+def test_retry_job_missing_input_file(mock_get_job: MagicMock, mock_exists: MagicMock) -> None:
     mock_get_job.return_value = {
         "job_id": "old",
         "status": "failed",
@@ -515,9 +511,10 @@ def test_collect_item_agent_failure() -> None:
 
 
 def test_collect_item_save_failure() -> None:
-    with patch("backend.api.routes.ResearchAgent") as mock_agent, patch(
-        "backend.api.routes.save_single_item"
-    ) as mock_save:
+    with (
+        patch("backend.api.routes.ResearchAgent") as mock_agent,
+        patch("backend.api.routes.save_single_item") as mock_save,
+    ):
         instance = MagicMock()
         instance.collect_item_with_confidence.return_value = ({"Name": "X"}, {"Name": 0.5})
         mock_agent.return_value = instance

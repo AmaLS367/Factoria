@@ -112,9 +112,7 @@ def test_schema_lines_unknown_table(tmp_path: Path) -> None:
     assert any("nonexistent_table" in line and "not found" in line for line in output)
 
 
-def test_show_columns_prints_schema(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_show_columns_prints_schema(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_path = tmp_path / "db.sqlite"
     create_normalized_schema(db_path)
 
@@ -131,9 +129,7 @@ def test_build_parser_accepts_args() -> None:
     assert args.table == "items"
 
 
-def test_main_runs_without_error(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_main_runs_without_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_path = tmp_path / "db.sqlite"
     create_normalized_schema(db_path)
     main(["--db-path", str(db_path), "--table", "items"])
