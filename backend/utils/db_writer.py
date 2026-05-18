@@ -285,14 +285,21 @@ def fetch_all(run_id: int | None = None) -> pd.DataFrame | None:
         # Fetch fields
         if run_id is not None:
             fields_df = pd.read_sql_query(
-                "SELECT item_id, field_name, field_value FROM item_fields "
+                "SELECT item_id, field_name, "
+                "CASE WHEN review_status = 'needs_review' "
+                "THEN NULL ELSE field_value END AS field_value "
+                "FROM item_fields "
                 "WHERE item_id IN (SELECT id FROM items WHERE run_id = ?)",
                 conn,
                 params=(run_id,),
             )
         else:
             fields_df = pd.read_sql_query(
-                "SELECT item_id, field_name, field_value FROM item_fields", conn
+                "SELECT item_id, field_name, "
+                "CASE WHEN review_status = 'needs_review' "
+                "THEN NULL ELSE field_value END AS field_value "
+                "FROM item_fields",
+                conn,
             )
 
         if not fields_df.empty:

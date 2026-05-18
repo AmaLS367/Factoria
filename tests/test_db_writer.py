@@ -21,7 +21,7 @@ def mock_db_writer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
             "model_name": "mock-model",
             "web_search_provider": "mock-provider",
             "db_path": str(db_path),
-            "review_enabled": True,
+            "review_enabled": False,
             "review_confidence_threshold": 0.6,
         },
     )()
@@ -449,6 +449,7 @@ def test_save_results_bulk_stores_token_usage(mock_db_writer: Path) -> None:
 
 
 def test_update_field_review_rejection_clears_value(mock_db_writer: Path) -> None:
+    db_writer.settings.review_enabled = True
     db_writer.init_db(["Name"])
     db_writer.save_results_bulk([("A", "Apple")], ["Name"])
 
@@ -480,6 +481,7 @@ def test_update_field_review_rejection_clears_value(mock_db_writer: Path) -> Non
 
 
 def test_review_queries_return_job_id(mock_db_writer: Path) -> None:
+    db_writer.settings.review_enabled = True
     db_writer.init_db(["Name"])
 
     # Create manual job and link it to run
@@ -491,7 +493,7 @@ def test_review_queries_return_job_id(mock_db_writer: Path) -> None:
             INSERT INTO jobs (job_id, status, run_id)
             VALUES (?, ?, ?)
             """,
-            ("my-awesome-job-123", "running", run_id)
+            ("my-awesome-job-123", "running", run_id),
         )
         conn.commit()
     finally:
@@ -514,3 +516,54 @@ def test_review_queries_return_job_id(mock_db_writer: Path) -> None:
     assert updated["job_id"] == "my-awesome-job-123"
     assert updated["review_status"] == "approved"
 
+
+def test_fetch_all_excludes_unreviewed_fields(mock_db_writer: Path) -> None:
+    db_writer.init_db(["Name"])
+
+    # Enable review mode in settings temporarily
+    original_enabled = db_writer.settings.review_enabled
+    original_threshold = db_writer.settings.review_confidence_threshold
+    db_writer.settings.review_enabled = True
+    db_writer.settings.review_confidence_threshold = 0.85
+
+    try:
+        # Save a low-confidence field (needs_review) and a high-confidence field
+        # We need a custom confidence_list to trigger needs_review
+        db_writer.save_results_bulk(
+            [("A", "Apple"), ("B", "Banana")],
+            ["Name"],
+            confidence_list=[{"Name": 0.5}, {"Name": 0.9}],
+        )
+
+        # Check that 'A' (low confidence) has review_status = 'needs_review'
+        # And 'B' has review_status = 'auto_accepted'
+        conn = sqlite3.connect(mock_db_writer)
+        try:
+            statuses = conn.execute(
+                "SELECT f.original_value, f.review_status FROM item_fields f"
+            ).fetchall()
+            assert len(statuses) == 2
+            # original values should be saved
+            assert dict(statuses)["Apple"] == "needs_review"
+            assert dict(statuses)["Banana"] == "auto_accepted"
+        finally:
+            conn.close()
+
+        # Call fetch_all and verify 'A' (Apple) is excluded (returned as None or NaN)
+        # while 'B' (Banana) is included.
+        df = db_writer.fetch_all()
+        assert df is not None
+        assert len(df) == 2
+
+        # Convert to dictionary for easy assertions
+        records = df.set_index("Part Number")["Name"].to_dict()
+        import pandas as pd
+
+        # Pandas DataFrame cells with None/NULL are nan/None
+        assert pd.isna(records["A"]) or records["A"] is None
+        assert records["B"] == "Banana"
+
+    finally:
+        # Restore settings
+        db_writer.settings.review_enabled = original_enabled
+        db_writer.settings.review_confidence_threshold = original_threshold

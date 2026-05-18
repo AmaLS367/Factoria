@@ -425,8 +425,7 @@ def add_human_review_fields(cur: sqlite3.Cursor, _context: MigrationContext) -> 
         WHERE field_value IS NULL
            OR field_value = ''
            OR field_value = 'Not found'
-           OR confidence IS NULL
-           OR confidence < ?
+           OR (confidence IS NOT NULL AND confidence < ?)
         """,
         (settings.review_confidence_threshold,),
     )
@@ -440,8 +439,7 @@ def add_human_review_fields(cur: sqlite3.Cursor, _context: MigrationContext) -> 
             field_value IS NULL
             OR field_value = ''
             OR field_value = 'Not found'
-            OR confidence IS NULL
-            OR confidence < ?
+            OR (confidence IS NOT NULL AND confidence < ?)
         )
         """,
         (settings.review_confidence_threshold,),
