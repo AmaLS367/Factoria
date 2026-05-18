@@ -571,3 +571,67 @@ def test_collect_item_save_failure() -> None:
         mock_save.side_effect = RuntimeError("db down")
         response = client.post("/items/collect", json={"item_id": "x"})
         assert response.status_code == 500
+
+
+@patch("backend.api.routes.fetch_review_queue")
+def test_list_review_fields_happy_path(mock_fetch: MagicMock) -> None:
+    mock_fetch.return_value = [{"field_id": 1, "review_status": "needs_review"}]
+    response = client.get("/reviews/fields?status=needs_review&limit=10&offset=5&job_id=job-123")
+    assert response.status_code == 200
+    assert response.json() == [{"field_id": 1, "review_status": "needs_review"}]
+    mock_fetch.assert_called_once_with(
+        status="needs_review", limit=10, offset=5, job_id="job-123"
+    )
+
+
+def test_list_review_fields_validation() -> None:
+    response = client.get("/reviews/fields?limit=9999")
+    assert response.status_code == 400
+
+    response = client.get("/reviews/fields?offset=-1")
+    assert response.status_code == 400
+
+    response = client.get("/reviews/fields?status=invalid_status")
+    assert response.status_code == 400
+
+
+@patch("backend.api.routes.update_field_review")
+def test_review_field_happy_path(mock_update: MagicMock) -> None:
+    mock_update.return_value = {"field_id": 1, "review_status": "approved"}
+    response = client.patch(
+        "/reviews/fields/1", json={"status": "approved", "reviewer_note": "looks good"}
+    )
+    assert response.status_code == 200
+    assert response.json() == {"field_id": 1, "review_status": "approved"}
+    mock_update.assert_called_once_with(
+        field_id=1, status="approved", field_value=None, reviewer_note="looks good"
+    )
+
+
+def test_review_field_invalid_status() -> None:
+    response = client.patch("/reviews/fields/1", json={"status": "invalid_status"})
+    assert response.status_code == 422  # Pydantic Literal validation error
+
+
+@patch("backend.api.routes.update_field_review")
+def test_review_field_value_error(mock_update: MagicMock) -> None:
+    mock_update.side_effect = ValueError("Corrected status requires a non-empty value")
+    response = client.patch("/reviews/fields/1", json={"status": "corrected", "field_value": ""})
+    assert response.status_code == 400
+    assert "non-empty value" in response.json()["detail"]
+
+
+@patch("backend.api.routes.update_field_review")
+def test_review_field_not_found(mock_update: MagicMock) -> None:
+    mock_update.return_value = None
+    response = client.patch("/reviews/fields/999", json={"status": "approved"})
+    assert response.status_code == 404
+
+
+@patch("backend.api.routes.get_review_summary")
+def test_review_summary_happy_path(mock_summary: MagicMock) -> None:
+    mock_summary.return_value = {"needs_review": 5, "auto_accepted": 10}
+    response = client.get("/reviews/summary?job_id=job-123")
+    assert response.status_code == 200
+    assert response.json() == {"needs_review": 5, "auto_accepted": 10}
+    mock_summary.assert_called_once_with(job_id="job-123")
