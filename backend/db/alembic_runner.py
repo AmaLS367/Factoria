@@ -1,6 +1,7 @@
 import logging
 import os
 import sqlite3
+from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
@@ -11,16 +12,20 @@ from backend.utils.migrations import run_migrations
 logger = logging.getLogger(__name__)
 
 
+def get_sqlite_url(db_path: str) -> str:
+    """Convert a database file path to a normalized SQLAlchemy SQLite URL."""
+    abs_path = os.path.abspath(db_path).replace("\\", "/")
+    return f"sqlite:///{abs_path}"
+
+
 def get_alembic_config() -> Config:
     """Load Alembic configuration dynamically and set the database URL."""
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    ini_path = os.path.join(base_dir, "alembic.ini")
-    config = Config(ini_path)
+    base_dir = Path(__file__).resolve().parents[2]
+    ini_path = base_dir / "alembic.ini"
+    config = Config(str(ini_path))
 
-    # Convert absolute backslashes to forward slashes for SQLite URL format
-    db_path = settings.db_path
-    abs_path = os.path.abspath(db_path).replace("\\", "/")
-    config.set_main_option("sqlalchemy.url", f"sqlite:///{abs_path}")
+    db_url = get_sqlite_url(settings.db_path)
+    config.set_main_option("sqlalchemy.url", db_url)
     return config
 
 
@@ -52,7 +57,7 @@ def ensure_alembic_initialized(identifier_column: str, fields: list[str]) -> Non
         run_alembic_migrations()
         return
 
-    # Connection to detect existing database state
+    # Check the database state first using a brief connection
     conn = sqlite3.connect(db_path)
     try:
         cur = conn.cursor()
@@ -80,27 +85,30 @@ def ensure_alembic_initialized(identifier_column: str, fields: list[str]) -> Non
             ).fetchone()
             is not None
         )
-
-        # If there are legacy tables but no alembic version
-        if (schema_migrations_exists or legacy_results_exists) and not alembic_version_exists:
-            logger.info("Legacy database detected. Running legacy migrations bridge...")
-            # Run the old custom migrations to the end (version 11)
-            run_migrations(conn, identifier_column, fields)
-            conn.commit()
-
-            # Stamp Alembic to baseline '0001'
-            logger.info("Stamping Alembic baseline version '0001'...")
-            config = get_alembic_config()
-            command.stamp(config, "0001")
-
-            # Now run any future Alembic migrations that might be after '0001'
-            run_alembic_migrations()
-        elif not alembic_version_exists:
-            # Brand new database file was touched/empty, just upgrade to head
-            logger.info("Touched/empty database detected. Running Alembic migrations...")
-            run_alembic_migrations()
-        else:
-            # Database is already under Alembic control, just run migrations
-            run_alembic_migrations()
     finally:
         conn.close()
+
+    # Now handle database migrations without holding any SQLite connections open.
+    # This prevents "database is locked" errors during schema changes.
+    if (schema_migrations_exists or legacy_results_exists) and not alembic_version_exists:
+        logger.info("Legacy database detected. Running legacy migrations bridge...")
+        # Run legacy custom migrations inside an isolated block
+        conn = sqlite3.connect(db_path)
+        try:
+            run_migrations(conn, identifier_column, fields)
+            conn.commit()
+        finally:
+            conn.close()
+
+        # Stamp Alembic to baseline '0001' and run any subsequent upgrades
+        logger.info("Stamping Alembic baseline version '0001'...")
+        config = get_alembic_config()
+        command.stamp(config, "0001")
+        run_alembic_migrations()
+    elif not alembic_version_exists:
+        # Brand new database file was touched/empty, just upgrade to head
+        logger.info("Touched/empty database detected. Running Alembic migrations...")
+        run_alembic_migrations()
+    else:
+        # Database is already under Alembic control, just run migrations
+        run_alembic_migrations()

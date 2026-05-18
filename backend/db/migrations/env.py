@@ -9,6 +9,7 @@ from sqlalchemy import create_engine, pool
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
 from backend.config import settings
+from backend.db.alembic_runner import get_sqlite_url
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -26,9 +27,7 @@ def get_db_url() -> str:
     db_path = settings.db_path
     db_dir = os.path.dirname(os.path.abspath(db_path))
     os.makedirs(db_dir, exist_ok=True)
-    # Convert absolute backslashes to forward slashes for SQLite URL format
-    abs_path = os.path.abspath(db_path).replace("\\", "/")
-    return f"sqlite:///{abs_path}"
+    return get_sqlite_url(db_path)
 
 
 def run_migrations_offline() -> None:
