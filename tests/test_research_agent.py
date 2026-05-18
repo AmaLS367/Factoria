@@ -98,6 +98,26 @@ def test_max_attempts_one_disables_retry(monkeypatch: pytest.MonkeyPatch) -> Non
     assert values["Name"] == "Not found"
 
 
+def test_preserves_earlier_parseable_response_when_later_attempt_garbage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression test: a later malformed retry must not discard usable
+    data extracted from an earlier attempt (Codex review feedback on PR #20).
+    """
+    monkeypatch.setattr(settings, "llm_validation_max_attempts", 2)
+
+    # Attempt 1: legacy flat — strict fails, lenient yields data
+    # Attempt 2: pure garbage — strict fails, lenient yields nothing
+    llm = ScriptedLLMClient(answers=['{"Name": "Widget"}', "garbage"])
+    agent = ResearchAgent(llm_client=llm, search_tool=EmptySearchTool())
+
+    values, _ = agent.collect_item_with_confidence("item-regression", ["Name"])
+
+    assert llm.calls == 2
+    # Must preserve "Widget" from attempt 1, not regress to "Not found"
+    assert values["Name"] == "Widget"
+
+
 def test_first_attempt_success_does_not_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "llm_validation_max_attempts", 3)
 

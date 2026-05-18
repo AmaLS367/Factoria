@@ -89,6 +89,9 @@ class ResearchAgent:
         if values is None or confidence is None:
             max_attempts = max(1, settings.llm_validation_max_attempts)
             last_raw = ""
+            # Preserve the first attempt whose lenient parse yielded real data,
+            # so a later malformed retry can't discard usable earlier output.
+            best_fallback: tuple[dict[str, str], dict[str, float | None]] | None = None
             for attempt in range(1, max_attempts + 1):
                 last_raw = self.llm_client.get_answer(prompt)
                 if not last_raw:
@@ -108,10 +111,24 @@ class ResearchAgent:
                         f"LLM response failed validation "
                         f"(attempt {attempt}/{max_attempts}) for {item_id}: {e}"
                     )
+                    if best_fallback is None:
+                        lenient_values, lenient_conf = parse_answer(last_raw, output_fields)
+                        if any(
+                            v not in {None, "", "Not found"}
+                            for k, v in lenient_values.items()
+                            if k != SOURCES_FIELD
+                        ):
+                            best_fallback = (lenient_values, lenient_conf)
 
             if values is None or confidence is None:
-                logger.warning(f"Falling back to lenient parser for {item_id}")
-                values, confidence = parse_answer(last_raw, output_fields)
+                if best_fallback is not None:
+                    logger.warning(
+                        f"Using parseable result from earlier attempt for {item_id}"
+                    )
+                    values, confidence = best_fallback
+                else:
+                    logger.warning(f"Falling back to lenient parser for {item_id}")
+                    values, confidence = parse_answer(last_raw, output_fields)
 
             if use_cache and cache_key is not None:
                 has_extracted_data = any(
