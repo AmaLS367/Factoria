@@ -541,7 +541,7 @@ def list_review_fields(
     if status not in allowed_statuses:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid status filter. Must be one of: {', '.join(allowed_statuses)}"
+            detail=f"Invalid status filter. Must be one of: {', '.join(allowed_statuses)}",
         )
 
     return fetch_review_queue(status=status, limit=limit, offset=offset, job_id=job_id)

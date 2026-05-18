@@ -579,9 +579,7 @@ def test_list_review_fields_happy_path(mock_fetch: MagicMock) -> None:
     response = client.get("/reviews/fields?status=needs_review&limit=10&offset=5&job_id=job-123")
     assert response.status_code == 200
     assert response.json() == [{"field_id": 1, "review_status": "needs_review"}]
-    mock_fetch.assert_called_once_with(
-        status="needs_review", limit=10, offset=5, job_id="job-123"
-    )
+    mock_fetch.assert_called_once_with(status="needs_review", limit=10, offset=5, job_id="job-123")
 
 
 def test_list_review_fields_validation() -> None:

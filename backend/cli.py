@@ -86,11 +86,11 @@ def run_review_mode(limit: int, as_json: bool) -> None:
 
     for i, item in enumerate(queue):
         field_id = item["field_id"]
-        ident_col = item['identifier_column']
-        ident_val = item['identifier_value']
+        ident_col = item["identifier_column"]
+        ident_val = item["identifier_value"]
         console.print(
             Panel(
-                f"[bold blue]Review item {i+1}/{len(queue)}[/]\n"
+                f"[bold blue]Review item {i + 1}/{len(queue)}[/]\n"
                 f"[bold]Item:[/] {ident_col} = [green]{ident_val}[/]\n"
                 f"[bold]Field:[/] {item['field_name']}\n"
                 f"[bold]Current Value:[/] {item['field_value']}\n"
@@ -101,9 +101,13 @@ def run_review_mode(limit: int, as_json: bool) -> None:
 
         while True:
             try:
-                choice = console.input(
-                    "[bold cyan]Action [a]pprove, [e]dit, [r]eject, [s]kip, [q]uit: [/]"
-                ).strip().lower()
+                choice = (
+                    console.input(
+                        "[bold cyan]Action [a]pprove, [e]dit, [r]eject, [s]kip, [q]uit: [/]"
+                    )
+                    .strip()
+                    .lower()
+                )
             except EOFError:
                 console.print("\n[yellow]Review session ended by user.[/]")
                 return

@@ -57,9 +57,7 @@ def test_run_review_mode_empty(mock_fetch: MagicMock) -> None:
 
 @patch("backend.cli.update_field_review")
 @patch("backend.cli.fetch_review_queue")
-def test_run_review_mode_interactive_approve(
-    mock_fetch: MagicMock, mock_update: MagicMock
-) -> None:
+def test_run_review_mode_interactive_approve(mock_fetch: MagicMock, mock_update: MagicMock) -> None:
     mock_fetch.return_value = [
         {
             "field_id": 10,
@@ -79,9 +77,7 @@ def test_run_review_mode_interactive_approve(
 
 @patch("backend.cli.update_field_review")
 @patch("backend.cli.fetch_review_queue")
-def test_run_review_mode_interactive_reject(
-    mock_fetch: MagicMock, mock_update: MagicMock
-) -> None:
+def test_run_review_mode_interactive_reject(mock_fetch: MagicMock, mock_update: MagicMock) -> None:
     mock_fetch.return_value = [
         {
             "field_id": 20,
@@ -101,9 +97,7 @@ def test_run_review_mode_interactive_reject(
 
 @patch("backend.cli.update_field_review")
 @patch("backend.cli.fetch_review_queue")
-def test_run_review_mode_interactive_edit(
-    mock_fetch: MagicMock, mock_update: MagicMock
-) -> None:
+def test_run_review_mode_interactive_edit(mock_fetch: MagicMock, mock_update: MagicMock) -> None:
     mock_fetch.return_value = [
         {
             "field_id": 30,
