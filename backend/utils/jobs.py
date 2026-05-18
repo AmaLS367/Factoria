@@ -1,4 +1,5 @@
 import datetime
+import json
 import logging
 import sqlite3
 import uuid
@@ -17,6 +18,8 @@ def create_job(
     job_id: Optional[str] = None,
     sheet_name: Optional[str] = None,
     column_name: Optional[str] = None,
+    target_fields: Optional[list[str]] = None,
+    item_label: Optional[str] = None,
 ) -> str:
     # Ensure DB is initialized to have the table
     init_db(settings.target_fields, create_default_run=False)
@@ -26,13 +29,24 @@ def create_job(
     conn = sqlite3.connect(db_path)
     try:
         cur = conn.cursor()
+        target_fields_json = json.dumps(target_fields) if target_fields is not None else None
         cur.execute(
             """
             INSERT INTO jobs
-                (job_id, status, input_file, output_file, total_items, sheet_name, column_name)
-            VALUES (?, 'queued', ?, ?, ?, ?, ?)
+                (job_id, status, input_file, output_file, total_items, sheet_name, column_name,\
+                 target_fields, item_label)
+            VALUES (?, 'queued', ?, ?, ?, ?, ?, ?, ?)
             """,
-            (job_id, input_file, output_file, total_items, sheet_name, column_name),
+            (
+                job_id,
+                input_file,
+                output_file,
+                total_items,
+                sheet_name,
+                column_name,
+                target_fields_json,
+                item_label,
+            ),
         )
         conn.commit()
         return job_id
