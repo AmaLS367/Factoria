@@ -1,7 +1,7 @@
 import os
 import sys
 from io import BytesIO
-from typing import Any
+from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
 import pandas as pd
@@ -484,7 +484,7 @@ def test_get_logs_missing_file(mock_exists: MagicMock) -> None:
     assert data["total_returned"] == 0
 
 
-def test_get_logs_with_level_filter(tmp_path: Any) -> None:
+def test_get_logs_with_level_filter(tmp_path: Path) -> None:
     log_content = (
         "2026-05-18 10:00:00,000 [INFO] backend.main: starting up\n"
         "2026-05-18 10:00:01,000 [ERROR] backend.main: kaboom\n"

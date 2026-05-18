@@ -47,11 +47,12 @@ def test_trusted_domain_iso() -> None:
 
 
 def test_score_is_clamped_to_one() -> None:
-    # Constructed URL: gov tld + trusted-domain hit can't exceed 1.0
-    # (no such real combo, but the clamp is unit-testable via assertion that
-    # we never get > 1.0 for any input)
-    score = score_source("https://nasa.gov")
-    assert 0.0 <= score <= 1.0
+    # Synthetic URL designed to overshoot 1.0 without the clamp:
+    #   baseline 0.4 + https 0.1 + gov 0.35 + trusted "iec.ch" substring 0.2 = 1.05
+    # The trusted-domain check uses substring matching, so "iec.ch" appearing
+    # anywhere in the netloc triggers the bonus.
+    score = score_source("https://iec.ch.foo.gov")
+    assert score == 1.0
 
 
 def test_www_prefix_stripped() -> None:

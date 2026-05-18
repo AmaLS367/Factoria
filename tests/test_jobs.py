@@ -1,6 +1,7 @@
 import sqlite3
 import time
-import typing
+from collections.abc import Generator
+from pathlib import Path
 
 import pytest
 
@@ -18,7 +19,7 @@ from backend.utils.jobs import (
 
 
 @pytest.fixture(autouse=True)
-def setup_test_db(tmp_path: typing.Any) -> typing.Generator[None, None, None]:
+def setup_test_db(tmp_path: Path) -> Generator[None, None, None]:
     # Override db_path for tests
     db_file = tmp_path / "test_jobs.sqlite"
     original_db_path = settings.db_path
@@ -135,7 +136,7 @@ def test_get_job_returns_none_for_unknown_id() -> None:
 
 
 def test_get_recent_jobs_returns_empty_when_table_missing(
-    tmp_path: typing.Any, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Point at a fresh empty sqlite that has no `jobs` table
     empty_db = tmp_path / "empty.sqlite"
