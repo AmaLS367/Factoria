@@ -17,7 +17,7 @@ from backend.agents.research_agent import ResearchAgent, build_search_query, ens
 from backend.clients.llm_client import LLMClient
 from backend.config import settings
 from backend.tools.web_search import WebSearchTool
-from backend.utils.db_writer import save_single_item
+from backend.utils.db_writer import fetch_review_queue, save_single_item, update_field_review
 
 # Force UTF-8 for Windows if needed, but rich usually handles it
 console = Console()
@@ -55,7 +55,7 @@ def process_single_item(item_id: str) -> None:
     for field, value in data.items():
         if field == settings.column_name:
             continue
-        table.add_row(str(field), str(value))
+        table.add_row(field, str(value))
 
     console.print(table)
 
@@ -72,11 +72,95 @@ def search_item(item_id: str) -> None:
     print(json.dumps([result.to_dict() for result in results], ensure_ascii=False, indent=2))
 
 
+def run_review_mode(limit: int, as_json: bool) -> None:
+    queue = fetch_review_queue(status="needs_review", limit=limit)
+    if as_json:
+        print(json.dumps(queue, ensure_ascii=False, indent=2))
+        return
+
+    if not queue:
+        console.print("[bold green]No fields need review.[/]")
+        return
+
+    console.print(f"[bold blue]Starting review mode for {len(queue)} items...[/]\n")
+
+    for i, item in enumerate(queue):
+        field_id = item["field_id"]
+        ident_col = item['identifier_column']
+        ident_val = item['identifier_value']
+        console.print(
+            Panel(
+                f"[bold blue]Review item {i+1}/{len(queue)}[/]\n"
+                f"[bold]Item:[/] {ident_col} = [green]{ident_val}[/]\n"
+                f"[bold]Field:[/] {item['field_name']}\n"
+                f"[bold]Current Value:[/] {item['field_value']}\n"
+                f"[bold]Confidence:[/] {item['confidence']}",
+                expand=False,
+            )
+        )
+
+        while True:
+            try:
+                choice = console.input(
+                    "[bold cyan]Action [a]pprove, [e]dit, [r]eject, [s]kip, [q]uit: [/]"
+                ).strip().lower()
+            except EOFError:
+                console.print("\n[yellow]Review session ended by user.[/]")
+                return
+
+            if choice in ("q", "quit"):
+                console.print("[yellow]Exiting review mode.[/]")
+                return
+            elif choice in ("s", "skip"):
+                console.print("[yellow]Skipped.[/]\n")
+                break
+            elif choice in ("a", "approve"):
+                update_field_review(field_id=field_id, status="approved")
+                console.print("[bold green]Approved![/]\n")
+                break
+            elif choice in ("r", "reject"):
+                update_field_review(field_id=field_id, status="rejected")
+                console.print("[bold red]Rejected![/]\n")
+                break
+            elif choice in ("e", "edit"):
+                while True:
+                    try:
+                        new_val = console.input("[bold yellow]Enter corrected value: [/]").strip()
+                    except EOFError:
+                        return
+                    if new_val:
+                        break
+                    console.print("[bold red]Value cannot be empty for edit![/]")
+
+                try:
+                    note = console.input("[bold yellow]Enter reviewer note (optional): [/]").strip()
+                except EOFError:
+                    note = ""
+
+                update_field_review(
+                    field_id=field_id,
+                    status="corrected",
+                    field_value=new_val,
+                    reviewer_note=note if note else None,
+                )
+                console.print("[bold green]Corrected and updated![/]\n")
+                break
+            else:
+                console.print("[bold red]Invalid option. Please choose a, e, r, s, or q.[/]")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="AI Data Collector CLI")
     parser.add_argument("item", nargs="*", help="Item identifier or search query")
     parser.add_argument("--search", action="store_true", help="Run only the web search tool")
+    parser.add_argument("--review", action="store_true", help="Interactive review mode")
+    parser.add_argument("--limit", type=int, default=100, help="Limit number of review items")
+    parser.add_argument("--json", action="store_true", help="Print review queue as JSON")
     args = parser.parse_args()
+
+    if args.review:
+        run_review_mode(limit=args.limit, as_json=args.json)
+        return
 
     if args.search:
         item_id = " ".join(args.item).strip()
