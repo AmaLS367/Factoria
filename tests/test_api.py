@@ -320,7 +320,8 @@ def test_list_items_pagination_invalid(mock_fetch_all: MagicMock, mock_exists: M
 
 
 @patch("backend.api.routes.BackgroundTasks.add_task")
-def test_jobs_excel_concurrency(mock_add_task: MagicMock) -> None:
+@patch("backend.utils.jobs.init_db")
+def test_jobs_excel_concurrency(mock_init_db: MagicMock, mock_add_task: MagicMock) -> None:
 
     # Test that two different jobs get unique paths
     m = mock_open()
