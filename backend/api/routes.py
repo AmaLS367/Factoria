@@ -136,6 +136,8 @@ def get_settings() -> dict[str, Any]:
         "batch_size": settings.batch_size,
         "target_fields": settings.target_fields,
         "item_label": settings.item_label,
+        "review_enabled": settings.review_enabled,
+        "review_confidence_threshold": settings.review_confidence_threshold,
     }
 
 
