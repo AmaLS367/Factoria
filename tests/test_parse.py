@@ -181,3 +181,16 @@ def test_strict_accepts_missing_confidence_key() -> None:
     values, conf = parse_answer_strict('{"values": {"Name": "Widget"}}', ["Name"])
     assert values == {"Name": "Widget"}
     assert conf == {"Name": None}
+
+
+def test_explicit_null_value_becomes_not_found_strict() -> None:
+    answer = '{"values": {"Name": null, "Color": "Red"}, "confidence": {}}'
+    values, _ = parse_answer_strict(answer, ["Name", "Color"])
+    # `null` must not become the literal string "None"
+    assert values == {"Name": "Not found", "Color": "Red"}
+
+
+def test_explicit_null_value_becomes_not_found_lenient() -> None:
+    answer = '{"Name": null, "Color": "Red"}'
+    values, _ = parse_answer(answer, ["Name", "Color"])
+    assert values == {"Name": "Not found", "Color": "Red"}
