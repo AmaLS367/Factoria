@@ -21,6 +21,8 @@ def mock_db_writer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
             "model_name": "mock-model",
             "web_search_provider": "mock-provider",
             "db_path": str(db_path),
+            "review_enabled": True,
+            "review_confidence_threshold": 0.6,
         },
     )()
 
@@ -141,6 +143,7 @@ def test_init_db_records_applied_schema_migrations(mock_db_writer: Path) -> None
         (8, "add_job_template_fields"),
         (9, "add_job_token_accounting"),
         (10, "add_item_token_accounting"),
+        (11, "add_human_review_fields"),
     ]
     assert migration_count == len(migration_rows)
 

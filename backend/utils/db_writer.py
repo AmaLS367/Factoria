@@ -126,6 +126,18 @@ def save_single_item(
     )
 
 
+def determine_review_status(field_value: str | None, confidence: float | None) -> str:
+    if not settings.review_enabled:
+        return "auto_accepted"
+    if field_value is None or field_value.strip() == "" or field_value == "Not found":
+        return "needs_review"
+    if confidence is None:
+        return "needs_review"
+    if confidence < settings.review_confidence_threshold:
+        return "needs_review"
+    return "auto_accepted"
+
+
 def save_results_bulk(
     data_list: list[tuple[str, ...]],
     fields: list[str],
@@ -203,7 +215,7 @@ def save_results_bulk(
                     continue  # Skip item_id itself
 
                 val = row_data[i]
-                field_value = str(val) if val is not None else None
+                field_value = val if val is not None else None
 
                 if field_name == SOURCES_FIELD_NAME:
                     if field_value is not None:
@@ -223,12 +235,25 @@ def save_results_bulk(
                         if confidence_list[row_index]:
                             conf_val = confidence_list[row_index].get(field_name)
 
+                    review_status = determine_review_status(field_value, conf_val)
                     cur.execute(
                         """
-                        INSERT INTO item_fields (item_id, field_name, field_value, confidence)
-                        VALUES (?, ?, ?, ?)
+                        INSERT INTO item_fields (
+                            item_id, field_name, field_value, confidence,
+                            original_value, review_status, reviewed_at, reviewer_note
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         """,
-                        (db_item_id, field_name, field_value, conf_val),
+                        (
+                            db_item_id,
+                            field_name,
+                            field_value,
+                            conf_val,
+                            field_value,
+                            review_status,
+                            None,
+                            None,
+                        ),
                     )
 
         conn.commit()
@@ -320,5 +345,166 @@ def fetch_all(run_id: int | None = None) -> pd.DataFrame | None:
     except Exception as e:
         logger.error(f"Error fetching from database: {e}")
         return None
+    finally:
+        conn.close()
+
+
+def fetch_review_queue(
+    status: str = "needs_review",
+    limit: int = 100,
+    offset: int = 0,
+    job_id: str | None = None,
+) -> list[dict[str, Any]]:
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        cur = conn.cursor()
+
+        query = """
+            SELECT
+                f.id AS field_id,
+                f.item_id AS item_id,
+                i.identifier_column AS identifier_column,
+                i.identifier_value AS identifier_value,
+                f.field_name AS field_name,
+                f.field_value AS field_value,
+                f.original_value AS original_value,
+                f.confidence AS confidence,
+                f.review_status AS review_status,
+                f.reviewed_at AS reviewed_at,
+                f.reviewer_note AS reviewer_note
+            FROM item_fields f
+            JOIN items i ON f.item_id = i.id
+            JOIN runs r ON i.run_id = r.id
+        """
+
+        params: list[Any] = []
+        if job_id is not None:
+            query += " JOIN jobs j ON j.run_id = r.id"
+            query += " WHERE f.review_status = ? AND j.job_id = ?"
+            params.extend([status, job_id])
+        else:
+            query += " WHERE f.review_status = ?"
+            params.append(status)
+
+        query += " ORDER BY f.id ASC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
+        rows = cur.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def update_field_review(
+    field_id: int,
+    status: str,
+    field_value: str | None = None,
+    reviewer_note: str | None = None,
+) -> dict[str, Any] | None:
+    allowed_statuses = {"approved", "corrected", "rejected"}
+    if status not in allowed_statuses:
+        raise ValueError(f"Invalid review status: {status}")
+
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        cur = conn.cursor()
+
+        # Fetch current record
+        current = cur.execute(
+            "SELECT id, field_value, review_status FROM item_fields WHERE id = ?",
+            (field_id,),
+        ).fetchone()
+        if not current:
+            return None
+
+        # Determine updates
+        if status == "approved":
+            final_value = current["field_value"]
+        elif status == "corrected":
+            if field_value is None or field_value.strip() == "":
+                raise ValueError("Corrected status requires a non-empty value")
+            final_value = field_value
+        elif status == "rejected":
+            final_value = field_value if field_value is not None else current["field_value"]
+        else:
+            final_value = current["field_value"]
+
+        cur.execute(
+            """
+            UPDATE item_fields
+            SET field_value = ?,
+                review_status = ?,
+                reviewed_at = CURRENT_TIMESTAMP,
+                reviewer_note = ?
+            WHERE id = ?
+            """,
+            (final_value, status, reviewer_note, field_id),
+        )
+        conn.commit()
+
+        updated = cur.execute(
+            """
+            SELECT
+                f.id AS field_id,
+                f.item_id AS item_id,
+                i.identifier_column AS identifier_column,
+                i.identifier_value AS identifier_value,
+                f.field_name AS field_name,
+                f.field_value AS field_value,
+                f.original_value AS original_value,
+                f.confidence AS confidence,
+                f.review_status AS review_status,
+                f.reviewed_at AS reviewed_at,
+                f.reviewer_note AS reviewer_note
+            FROM item_fields f
+            JOIN items i ON f.item_id = i.id
+            WHERE f.id = ?
+            """,
+            (field_id,),
+        ).fetchone()
+
+        return dict(updated) if updated else None
+    finally:
+        conn.close()
+
+
+def get_review_summary(job_id: str | None = None) -> dict[str, int]:
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    try:
+        cur = conn.cursor()
+
+        query = """
+            SELECT f.review_status, COUNT(*)
+            FROM item_fields f
+            JOIN items i ON f.item_id = i.id
+            JOIN runs r ON i.run_id = r.id
+        """
+        params = []
+        if job_id is not None:
+            query += " JOIN jobs j ON j.run_id = r.id"
+            query += " WHERE j.job_id = ?"
+            params.append(job_id)
+
+        query += " GROUP BY f.review_status"
+
+        rows = cur.execute(query, params).fetchall()
+
+        summary = {
+            "needs_review": 0,
+            "auto_accepted": 0,
+            "approved": 0,
+            "corrected": 0,
+            "rejected": 0,
+        }
+        for status, count in rows:
+            if status in summary:
+                summary[status] = count
+
+        return summary
     finally:
         conn.close()
