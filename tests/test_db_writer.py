@@ -446,3 +446,71 @@ def test_save_results_bulk_stores_token_usage(mock_db_writer: Path) -> None:
         "llm_requests": 1,
         "estimated_cost_usd": 0.00125,
     }
+
+
+def test_update_field_review_rejection_clears_value(mock_db_writer: Path) -> None:
+    db_writer.init_db(["Name"])
+    db_writer.save_results_bulk([("A", "Apple")], ["Name"])
+
+    conn = sqlite3.connect(mock_db_writer)
+    try:
+        field = conn.execute(
+            "SELECT id, field_value, review_status FROM item_fields WHERE field_name = 'Name'"
+        ).fetchone()
+        field_id = field[0]
+    finally:
+        conn.close()
+
+    # Reject the field value
+    updated = db_writer.update_field_review(field_id, "rejected", reviewer_note="unreliable")
+    assert updated is not None
+    assert updated["review_status"] == "rejected"
+    assert updated["field_value"] is None
+    assert updated["reviewer_note"] == "unreliable"
+
+    # Verify database directly
+    conn = sqlite3.connect(mock_db_writer)
+    try:
+        db_val = conn.execute(
+            "SELECT field_value FROM item_fields WHERE id = ?", (field_id,)
+        ).fetchone()
+        assert db_val[0] is None
+    finally:
+        conn.close()
+
+
+def test_review_queries_return_job_id(mock_db_writer: Path) -> None:
+    db_writer.init_db(["Name"])
+
+    # Create manual job and link it to run
+    conn = sqlite3.connect(mock_db_writer)
+    try:
+        run_id = conn.execute("SELECT id FROM runs ORDER BY id DESC LIMIT 1").fetchone()[0]
+        conn.execute(
+            """
+            INSERT INTO jobs (job_id, status, run_id)
+            VALUES (?, ?, ?)
+            """,
+            ("my-awesome-job-123", "running", run_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Save item fields so they are associated with the run (and thus the job)
+    db_writer.save_results_bulk([("A", "Apple")], ["Name"])
+
+    # Fetch review queue
+    queue = db_writer.fetch_review_queue(status="needs_review")
+    assert len(queue) == 1
+    assert queue[0]["job_id"] == "my-awesome-job-123"
+    assert queue[0]["field_name"] == "Name"
+
+    field_id = queue[0]["field_id"]
+
+    # Update field review and check job_id in response
+    updated = db_writer.update_field_review(field_id, "approved", reviewer_note="good job")
+    assert updated is not None
+    assert updated["job_id"] == "my-awesome-job-123"
+    assert updated["review_status"] == "approved"
+

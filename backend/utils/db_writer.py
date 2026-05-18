@@ -373,15 +373,16 @@ def fetch_review_queue(
                 f.confidence AS confidence,
                 f.review_status AS review_status,
                 f.reviewed_at AS reviewed_at,
-                f.reviewer_note AS reviewer_note
+                f.reviewer_note AS reviewer_note,
+                j.job_id AS job_id
             FROM item_fields f
             JOIN items i ON f.item_id = i.id
             JOIN runs r ON i.run_id = r.id
+            LEFT JOIN jobs j ON j.run_id = r.id
         """
 
         params: list[Any] = []
         if job_id is not None:
-            query += " JOIN jobs j ON j.run_id = r.id"
             query += " WHERE f.review_status = ? AND j.job_id = ?"
             params.extend([status, job_id])
         else:
@@ -429,7 +430,7 @@ def update_field_review(
                 raise ValueError("Corrected status requires a non-empty value")
             final_value = field_value
         elif status == "rejected":
-            final_value = field_value if field_value is not None else current["field_value"]
+            final_value = None
         else:
             final_value = current["field_value"]
 
@@ -459,9 +460,12 @@ def update_field_review(
                 f.confidence AS confidence,
                 f.review_status AS review_status,
                 f.reviewed_at AS reviewed_at,
-                f.reviewer_note AS reviewer_note
+                f.reviewer_note AS reviewer_note,
+                j.job_id AS job_id
             FROM item_fields f
             JOIN items i ON f.item_id = i.id
+            JOIN runs r ON i.run_id = r.id
+            LEFT JOIN jobs j ON j.run_id = r.id
             WHERE f.id = ?
             """,
             (field_id,),

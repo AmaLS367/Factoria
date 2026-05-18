@@ -3,6 +3,8 @@ import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from backend.config import settings
+
 logger = logging.getLogger(__name__)
 
 SOURCES_FIELD_NAME = "Sources"
@@ -415,19 +417,23 @@ def add_human_review_fields(cur: sqlite3.Cursor, _context: MigrationContext) -> 
         WHERE original_value IS NULL
     """)
 
-    # Backfill review_status to needs_review
-    cur.execute("""
+    # Backfill review_status to needs_review using settings threshold
+    cur.execute(
+        """
         UPDATE item_fields
         SET review_status = 'needs_review'
         WHERE field_value IS NULL
            OR field_value = ''
            OR field_value = 'Not found'
            OR confidence IS NULL
-           OR confidence < 0.6
-    """)
+           OR confidence < ?
+        """,
+        (settings.review_confidence_threshold,),
+    )
 
-    # Backfill review_status to auto_accepted for everything else
-    cur.execute("""
+    # Backfill review_status to auto_accepted for everything else using settings threshold
+    cur.execute(
+        """
         UPDATE item_fields
         SET review_status = 'auto_accepted'
         WHERE NOT (
@@ -435,9 +441,11 @@ def add_human_review_fields(cur: sqlite3.Cursor, _context: MigrationContext) -> 
             OR field_value = ''
             OR field_value = 'Not found'
             OR confidence IS NULL
-            OR confidence < 0.6
+            OR confidence < ?
         )
-    """)
+        """,
+        (settings.review_confidence_threshold,),
+    )
 
 
 MIGRATIONS = [
