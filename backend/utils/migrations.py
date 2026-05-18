@@ -398,7 +398,7 @@ def add_job_token_accounting(cur: sqlite3.Cursor, _context: MigrationContext) ->
 def add_item_token_accounting(cur: sqlite3.Cursor, _context: MigrationContext) -> None:
     cur.execute("ALTER TABLE items ADD COLUMN prompt_tokens INTEGER DEFAULT 0")
     cur.execute("ALTER TABLE items ADD COLUMN completion_tokens INTEGER DEFAULT 0")
-    cur.execute("ALTER TABLE items ADD COLUMN llm_requests INTEGER DEFAULT 1")
+    cur.execute("ALTER TABLE items ADD COLUMN llm_requests INTEGER DEFAULT 0")
     cur.execute("ALTER TABLE items ADD COLUMN estimated_cost_usd REAL DEFAULT 0.0")
 
 

@@ -20,8 +20,8 @@ SOURCES_FIELD = "Sources"
 
 
 class AnswerClient(Protocol):
-    def get_answer(self, prompt: str) -> tuple[str, "TokenUsage"]:
-        """Return an LLM answer for the prompt."""
+    def get_answer(self, prompt: str) -> tuple[str, TokenUsage]:
+        """Return an LLM answer and token usage for the prompt."""
 
 
 class SearchTool(Protocol):
@@ -61,6 +61,7 @@ class ResearchAgent:
         values = None
         confidence: dict[str, float | None] | None = None
         cache_key = None
+        accumulated_usage = TokenUsage()
 
         if use_cache:
             payload = {
@@ -94,7 +95,7 @@ class ResearchAgent:
             best_fallback: tuple[dict[str, str], dict[str, float | None]] | None = None
             for attempt in range(1, max_attempts + 1):
                 last_raw, attempt_usage = self.llm_client.get_answer(prompt)
-
+                accumulated_usage = accumulated_usage + attempt_usage
                 if not last_raw:
                     logger.warning(f"LLM returned empty response for {item_id}; skipping retry")
                     break
@@ -147,7 +148,7 @@ class ResearchAgent:
             values[SOURCES_FIELD] = format_sources(search_results)
 
         final_values = {k: v if v is not None else "" for k, v in values.items()}
-        return final_values, confidence
+        return final_values, confidence, accumulated_usage
 
     def collect_item(self, item_id: str, fields: list[str] | None = None) -> dict[str, str]:
         values, _, _usage = self.collect_item_with_confidence(item_id, fields)

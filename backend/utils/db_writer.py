@@ -116,12 +116,13 @@ def save_single_item(
     init_db(output_fields, create_default_run=(run_id is None))
     row_data = prepare_row_data(item_id, data, output_fields)
     conf_list = [confidence] if confidence is not None else None
+    usage_list = [token_usage] if token_usage is not None else None
     save_results_bulk(
         [row_data],
         output_fields,
         run_id=run_id,
         confidence_list=conf_list,
-        token_usage_list=[token_usage] if token_usage else None,
+        token_usage_list=usage_list,
     )
 
 
@@ -176,6 +177,26 @@ def save_results_bulk(
                 # If item already exists, we skip inserting new fields/sources for it
                 # to mirror INSERT OR IGNORE behavior
                 continue
+
+            if token_usage_list is not None and row_index < len(token_usage_list):
+                usage = token_usage_list[row_index]
+                cur.execute(
+                    """
+                    UPDATE items
+                    SET prompt_tokens = ?,
+                        completion_tokens = ?,
+                        llm_requests = ?,
+                        estimated_cost_usd = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        usage.prompt_tokens,
+                        usage.completion_tokens,
+                        usage.effective_llm_requests,
+                        usage.estimated_cost_usd,
+                        db_item_id,
+                    ),
+                )
 
             for i, field_name in enumerate(all_fields):
                 if i == 0:

@@ -134,6 +134,35 @@ def update_job_progress(job_id: str, processed: int = 0, skipped: int = 0, faile
         conn.close()
 
 
+def update_job_token_usage(
+    job_id: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    cost_usd: float,
+    llm_requests: int = 1,
+) -> None:
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            UPDATE jobs
+            SET total_prompt_tokens = total_prompt_tokens + ?,
+                total_completion_tokens = total_completion_tokens + ?,
+                total_llm_requests = total_llm_requests + ?,
+                estimated_cost_usd = ROUND(estimated_cost_usd + ?, 8)
+            WHERE job_id = ?
+            """,
+            (prompt_tokens, completion_tokens, llm_requests, cost_usd, job_id),
+        )
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Error updating job {job_id} token usage: {e}")
+    finally:
+        conn.close()
+
+
 def get_job(job_id: str) -> Optional[Dict[str, Any]]:
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
@@ -181,32 +210,5 @@ def update_job_total_items(job_id: str, total_items: int) -> None:
         conn.commit()
     except Exception as e:
         logger.error(f"Error updating job {job_id} total_items: {e}")
-    finally:
-        conn.close()
-
-
-def update_job_token_usage(
-    job_id: str,
-    prompt_tokens: int,
-    completion_tokens: int,
-    cost_usd: float,
-) -> None:
-    db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
-    try:
-        conn.execute(
-            """
-            UPDATE jobs
-            SET total_prompt_tokens    = total_prompt_tokens + ?,
-                total_completion_tokens = total_completion_tokens + ?,
-                total_llm_requests     = total_llm_requests + 1,
-                estimated_cost_usd     = ROUND(estimated_cost_usd + ?, 8)
-            WHERE job_id = ?
-            """,
-            (prompt_tokens, completion_tokens, cost_usd, job_id),
-        )
-        conn.commit()
-    except Exception as e:
-        logger.error(f"Error updating job {job_id} token usage: {e}")
     finally:
         conn.close()
