@@ -226,6 +226,9 @@ def test_batch_main_uses_research_agent_and_persists_sources(
     initialized_fields: list[str] = []
 
     class FakeResearchAgent:
+        def __init__(self, item_label: str | None = None) -> None:
+            pass
+
         def collect_item_with_confidence(
             self, item_id: str, fields: list[str] | None = None
         ) -> tuple[dict[str, str], dict[str, float | None]]:

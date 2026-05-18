@@ -136,6 +136,7 @@ def test_init_db_records_applied_schema_migrations(mock_db_writer: Path) -> None
         (5, "create_cache_table"),
         (6, "add_job_import_config"),
         (7, "add_source_credibility_score"),
+        (8, "add_job_template_fields"),
     ]
     assert migration_count == len(migration_rows)
 

@@ -1,4 +1,4 @@
-import type { ItemField } from "./types";
+import type { ItemField, SchemaTemplate } from "./types";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
@@ -50,11 +50,16 @@ export async function runExcelJob(
   file: File,
   sheetName?: string,
   columnName?: string,
+  targetFields?: string[],
+  itemLabel?: string,
 ) {
   const formData = new FormData();
   formData.append("file", file);
   if (sheetName) formData.append("sheet_name", sheetName);
   if (columnName) formData.append("column_name", columnName);
+  if (targetFields)
+    formData.append("target_fields", JSON.stringify(targetFields));
+  if (itemLabel) formData.append("item_label", itemLabel);
   const res = await fetch(`${API_BASE_URL}/jobs/excel`, {
     method: "POST",
     body: formData,
@@ -131,4 +136,32 @@ export async function fetchItemFields(
   );
   if (!res.ok) throw new Error("Failed to fetch fields");
   return res.json();
+}
+
+export async function fetchTemplates(): Promise<SchemaTemplate[]> {
+  const res = await fetch(`${API_BASE_URL}/templates`);
+  if (!res.ok) throw new Error("Failed to fetch templates");
+  return res.json();
+}
+
+export async function createTemplate(
+  t: Omit<SchemaTemplate, "is_builtin">,
+): Promise<SchemaTemplate> {
+  const res = await fetch(`${API_BASE_URL}/templates`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(t),
+  });
+  if (!res.ok) throw new Error("Failed to create template");
+  return res.json();
+}
+
+export async function deleteTemplate(slug: string): Promise<void> {
+  const res = await fetch(
+    `${API_BASE_URL}/templates/${encodeURIComponent(slug)}`,
+    {
+      method: "DELETE",
+    },
+  );
+  if (!res.ok) throw new Error("Failed to delete template");
 }

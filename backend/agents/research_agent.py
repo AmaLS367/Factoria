@@ -33,20 +33,22 @@ class ResearchAgent:
         self,
         llm_client: AnswerClient | None = None,
         search_tool: SearchTool | None = None,
+        item_label: str | None = None,
     ) -> None:
         self.llm_client = llm_client or LLMClient()
         self.search_tool = search_tool or WebSearchTool()
+        self.item_label = item_label or settings.item_label
 
     def collect_item_with_confidence(
         self, item_id: str, fields: list[str] | None = None
     ) -> tuple[dict[str, str], dict[str, float | None]]:
         output_fields = ensure_sources_field(fields or settings.target_fields)
-        query = build_search_query(item_id, settings.item_label, output_fields)
+        query = build_search_query(item_id, self.item_label, output_fields)
         search_results = self.search_tool.search(query)
 
         prompt = generate_prompt(
             item_id=item_id,
-            item_label=settings.item_label,
+            item_label=self.item_label,
             fields=output_fields,
             web_context=format_search_context(search_results),
         )
@@ -62,7 +64,7 @@ class ResearchAgent:
         if use_cache:
             payload = {
                 "item_id": item_id,
-                "item_label": settings.item_label,
+                "item_label": self.item_label,
                 "target_fields": output_fields,
                 "search_context": [r.to_dict() for r in search_results],
                 "prompt_version": "extract_v1",

@@ -33,6 +33,7 @@ def test_llm_cache_key_changes_with_item_label(
     agent1 = ResearchAgent(llm_client=llm1, search_tool=FakeSearchTool())
 
     monkeypatch.setattr(settings, "item_label", "First Label")
+    agent1 = ResearchAgent(llm_client=llm1, search_tool=FakeSearchTool())
     agent1.collect_item("item-1", ["field1"])
     assert llm1.calls == 1
 
@@ -42,5 +43,6 @@ def test_llm_cache_key_changes_with_item_label(
 
     # Change label, should miss cache
     monkeypatch.setattr(settings, "item_label", "Second Label")
-    agent1.collect_item("item-1", ["field1"])
+    agent2 = ResearchAgent(llm_client=llm1, search_tool=FakeSearchTool())
+    agent2.collect_item("item-1", ["field1"])
     assert llm1.calls == 2  # New call made
