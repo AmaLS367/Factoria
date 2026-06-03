@@ -1,0 +1,36 @@
+stages:
+  - backend
+  - frontend
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - when: never
+
+backend:
+  image: python:3.12
+  stage: backend
+  before_script:
+    - pip install uv
+    - uv sync --all-groups --frozen
+  script:
+    - uv run ruff check .
+    - uv run mypy .
+    - uv run pytest
+
+frontend:
+  image: node:20
+  stage: frontend
+  cache:
+    key:
+      files:
+        - frontend/package-lock.json
+    paths:
+      - frontend/.npm/
+  before_script:
+    - cd frontend
+    - npm ci --cache .npm --prefer-offline
+  script:
+    - npm run lint
+    - npm run build
