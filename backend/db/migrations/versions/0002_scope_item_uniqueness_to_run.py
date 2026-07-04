@@ -14,6 +14,7 @@ Create Date: 2026-07-04 12:00:00.000000
 from typing import Sequence, Union
 
 from alembic import op
+from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
 revision: str = "0002"
@@ -35,12 +36,12 @@ def upgrade() -> None:
 def downgrade() -> None:
     conn = op.get_bind()
     result = conn.execute(
-        """
-        SELECT identifier_column, identifier_value, COUNT(*)
-        FROM items
-        GROUP BY identifier_column, identifier_value
-        HAVING COUNT(*) > 1
-        """
+        text(
+            "SELECT identifier_column, identifier_value, COUNT(*) "
+            "FROM items "
+            "GROUP BY identifier_column, identifier_value "
+            "HAVING COUNT(*) > 1"
+        )
     )
     duplicates = result.fetchall()
     if duplicates:

@@ -58,97 +58,137 @@ class ResearchAgent:
         provider = settings.resolved_llm_provider
         model = settings.resolved_llm_model
 
-        values = None
+        values: dict[str, str] | None = None
         confidence: dict[str, float | None] | None = None
-        cache_key = None
+        cache_key: str | None = None
         accumulated_usage = TokenUsage()
 
         if use_cache:
-            payload = {
-                "item_id": item_id,
-                "item_label": self.item_label,
-                "target_fields": output_fields,
-                "search_context": [r.to_dict() for r in search_results],
-                "prompt_version": "extract_v1",
-                "system_prompt": settings.system_prompt,
-            }
-            cache_key = make_cache_key("llm_extract", provider, model, payload)
-            cached_parsed = get_cache(cache_key)
-            if cached_parsed is not None and isinstance(cached_parsed, dict):
-                logger.info(f"LLM extract cache hit for item: {item_id}")
-                if "values" in cached_parsed and "confidence" in cached_parsed:
-                    values = {str(k): str(v) for k, v in cached_parsed["values"].items()}
-                    confidence = {
-                        str(k): float(v) if v is not None else None
-                        for k, v in cached_parsed["confidence"].items()
-                    }
-                else:
-                    # Legacy cache flat format
-                    values = {str(k): str(v) for k, v in cached_parsed.items()}
-                    confidence = {k: None for k in values}
+            values, confidence, cache_key = self._get_from_cache(
+                item_id, output_fields, search_results, provider, model
+            )
 
         if values is None or confidence is None:
-            max_attempts = max(1, settings.llm_validation_max_attempts)
-            last_raw = ""
-            # Preserve the first attempt whose lenient parse yielded real data,
-            # so a later malformed retry can't discard usable earlier output.
-            best_fallback: tuple[dict[str, str], dict[str, float | None]] | None = None
-            for attempt in range(1, max_attempts + 1):
-                last_raw, attempt_usage = self.llm_client.get_answer(prompt)
-                accumulated_usage = accumulated_usage + attempt_usage
-                if not last_raw:
-                    logger.warning(f"LLM returned empty response for {item_id}; skipping retry")
-                    break
-                try:
-                    values, confidence = parse_answer_strict(last_raw, output_fields)
-                    if attempt > 1:
-                        logger.info(f"LLM response validated on attempt {attempt} for {item_id}")
-                    break
-                except LLMResponseValidationError as e:
-                    logger.warning(
-                        f"LLM response failed validation "
-                        f"(attempt {attempt}/{max_attempts}) for {item_id}: {e}"
-                    )
-                    if best_fallback is None:
-                        lenient_values, lenient_conf = parse_answer(last_raw, output_fields)
-                        if any(
-                            v not in {None, "", "Not found"}
-                            for k, v in lenient_values.items()
-                            if k != SOURCES_FIELD
-                        ):
-                            best_fallback = (lenient_values, lenient_conf)
-
-            if values is None or confidence is None:
-                if best_fallback is not None:
-                    logger.warning(f"Using parseable result from earlier attempt for {item_id}")
-                    values, confidence = best_fallback
-                else:
-                    logger.warning(f"Falling back to lenient parser for {item_id}")
-                    values, confidence = parse_answer(last_raw, output_fields)
+            values, confidence, attempt_usage = self._execute_llm_retry_loop(
+                item_id, prompt, output_fields
+            )
+            accumulated_usage = accumulated_usage + attempt_usage
 
             if use_cache and cache_key is not None:
-                has_extracted_data = any(
-                    v not in {None, "", "Not found"}
-                    for k, v in values.items()
-                    if k != SOURCES_FIELD
-                )
-
-                if has_extracted_data:
-                    logger.info(f"LLM extract cache miss for item: {item_id}")
-                    set_cache(
-                        cache_key=cache_key,
-                        kind="llm_extract",
-                        provider=provider,
-                        model=model,
-                        payload={"values": values, "confidence": confidence},
-                        ttl_days=settings.cache_llm_ttl_days,
-                    )
+                self._save_to_cache(cache_key, provider, model, values, confidence)
 
         if values.get(SOURCES_FIELD) in {None, "", "Not found"}:
             values[SOURCES_FIELD] = format_sources(search_results)
 
         final_values = {k: v if v is not None else "" for k, v in values.items()}
         return final_values, confidence, accumulated_usage
+
+    def _get_from_cache(
+        self,
+        item_id: str,
+        output_fields: list[str],
+        search_results: list[SearchResult],
+        provider: str,
+        model: str,
+    ) -> tuple[dict[str, str] | None, dict[str, float | None] | None, str]:
+        payload = {
+            "item_id": item_id,
+            "item_label": self.item_label,
+            "target_fields": output_fields,
+            "search_context": [r.to_dict() for r in search_results],
+            "prompt_version": "extract_v1",
+            "system_prompt": settings.system_prompt,
+        }
+
+        cache_key = make_cache_key("llm_extract", provider, model, payload)
+        cached_parsed = get_cache(cache_key)
+
+        if cached_parsed is not None and isinstance(cached_parsed, dict):
+            logger.info(f"LLM extract cache hit for item: {item_id}")
+            if "values" in cached_parsed and "confidence" in cached_parsed:
+                values = {str(k): str(v) for k, v in cached_parsed["values"].items()}
+                confidence = {
+                    str(k): float(v) if v is not None else None
+                    for k, v in cached_parsed["confidence"].items()
+                }
+            else:
+                values = {str(k): str(v) for k, v in cached_parsed.items()}
+                confidence = {k: None for k in values}
+            return values, confidence, cache_key
+
+        return None, None, cache_key
+
+    def _execute_llm_retry_loop(
+        self, item_id: str, prompt: str, output_fields: list[str]
+    ) -> tuple[dict[str, str], dict[str, float | None], TokenUsage]:
+        max_attempts = max(1, settings.llm_validation_max_attempts)
+        last_raw = ""
+        best_fallback: tuple[dict[str, str], dict[str, float | None]] | None = None
+        accumulated_usage = TokenUsage()
+
+        values: dict[str, str] | None = None
+        confidence: dict[str, float | None] | None = None
+
+        for attempt in range(1, max_attempts + 1):
+            last_raw, attempt_usage = self.llm_client.get_answer(prompt)
+            accumulated_usage = accumulated_usage + attempt_usage
+
+            if not last_raw:
+                logger.warning(f"LLM returned empty response for {item_id}; skipping retry")
+                break
+
+            try:
+                values, confidence = parse_answer_strict(last_raw, output_fields)
+                if attempt > 1:
+                    logger.info(f"LLM response validated on attempt {attempt} for {item_id}")
+                break
+            except LLMResponseValidationError as e:
+                logger.warning(
+                    f"LLM response failed validation"
+                    f" (attempt {attempt}/{max_attempts}) for {item_id}: {e}"
+                )
+
+                if best_fallback is None:
+                    lenient_values, lenient_conf = parse_answer(last_raw, output_fields)
+                    if any(
+                        v not in {None, "", "Not found"}
+                        for k, v in lenient_values.items()
+                        if k != SOURCES_FIELD
+                    ):
+                        best_fallback = (lenient_values, lenient_conf)
+
+        if values is None or confidence is None:
+            if best_fallback is not None:
+                logger.warning(f"Using parseable result from earlier attempt for {item_id}")
+                values, confidence = best_fallback
+            else:
+                logger.warning(f"Falling back to lenient parser for {item_id}")
+                values, confidence = parse_answer(last_raw, output_fields)
+
+        return values, confidence, accumulated_usage
+
+    def _save_to_cache(
+        self,
+        cache_key: str,
+        provider: str,
+        model: str,
+        values: dict[str, str],
+        confidence: dict[str, float | None],
+    ) -> None:
+        has_extracted_data = any(
+            v not in {None, "", "Not found"} for k, v in values.items() if k != SOURCES_FIELD
+        )
+
+        if has_extracted_data:
+            logger.info(f"LLM extract cache miss for item: {cache_key[:10]}...")
+            set_cache(
+                cache_key=cache_key,
+                kind="llm_extract",
+                provider=provider,
+                model=model,
+                payload={"values": values, "confidence": confidence},
+                ttl_days=settings.cache_llm_ttl_days,
+            )
 
     def collect_item(self, item_id: str, fields: list[str] | None = None) -> dict[str, str]:
         values, _, _usage = self.collect_item_with_confidence(item_id, fields)

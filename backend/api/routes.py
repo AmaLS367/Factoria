@@ -471,8 +471,7 @@ def get_item_fields(
             ).fetchone()
         else:
             rows = conn.execute(
-                "SELECT id FROM items"
-                " WHERE identifier_column = ? AND identifier_value = ?",
+                "SELECT id FROM items WHERE identifier_column = ? AND identifier_value = ?",
                 (resolved_column, identifier_value),
             ).fetchall()
             if len(rows) > 1:
@@ -516,8 +515,7 @@ def get_item_sources(
             ).fetchone()
         else:
             rows = conn.execute(
-                "SELECT id FROM items"
-                " WHERE identifier_column = ? AND identifier_value = ?",
+                "SELECT id FROM items WHERE identifier_column = ? AND identifier_value = ?",
                 (resolved_column, identifier_value),
             ).fetchall()
             if len(rows) > 1:

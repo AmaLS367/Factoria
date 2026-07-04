@@ -243,9 +243,7 @@ def main(
                         batch_usage.effective_llm_requests,
                     )
 
-        final_df = fetch_all(
-            run_id=current_run_id, identifier_column=effective_column
-        )
+        final_df = fetch_all(run_id=current_run_id, identifier_column=effective_column)
         format_output_excel(output_file_path, final_df)
         logger.info("Data collection completed successfully")
         if job_id:
