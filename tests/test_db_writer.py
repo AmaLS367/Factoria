@@ -584,3 +584,69 @@ def test_fetch_all_excludes_unreviewed_fields(mock_db_writer: Path) -> None:
         # Restore settings
         db_writer.settings.review_enabled = original_enabled
         db_writer.settings.review_confidence_threshold = original_threshold
+
+
+def test_custom_identifier_column_persistence(mock_db_writer: Path) -> None:
+    db_writer.init_db(["Name", "Description"], identifier_column="SKU")
+    db_writer.save_results_bulk(
+        [("ABC-001", "Widget", "A widget")],
+        ["Name", "Description"],
+        identifier_column="SKU",
+    )
+
+    conn = sqlite3.connect(mock_db_writer)
+    try:
+        item = conn.execute(
+            "SELECT identifier_column, identifier_value FROM items"
+        ).fetchone()
+        assert item is not None
+        assert item[0] == "SKU"
+        assert item[1] == "ABC-001"
+    finally:
+        conn.close()
+
+
+def test_get_all_existing_ids_with_custom_column(mock_db_writer: Path) -> None:
+    db_writer.init_db(["Name"], identifier_column="Part Ref")
+    db_writer.save_results_bulk(
+        [("REF-001", "Alpha"), ("REF-002", "Beta")],
+        ["Name"],
+        identifier_column="Part Ref",
+    )
+
+    ids = db_writer.get_all_existing_ids(identifier_column="Part Ref")
+    assert ids == {"REF-001", "REF-002"}
+
+    ids_default = db_writer.get_all_existing_ids()
+    assert ids_default == set()
+
+
+def test_default_vs_custom_identifier_isolation(mock_db_writer: Path) -> None:
+    db_writer.init_db(["Name"])
+    db_writer.save_results_bulk([("DEFAULT-1", "Default Item")], ["Name"])
+
+    db_writer.save_results_bulk(
+        [("CUSTOM-1", "Custom Item")],
+        ["Name"],
+        identifier_column="Product ID",
+    )
+
+    default_ids = db_writer.get_all_existing_ids()
+    assert "DEFAULT-1" in default_ids
+    assert "CUSTOM-1" not in default_ids
+
+    custom_ids = db_writer.get_all_existing_ids(identifier_column="Product ID")
+    assert "CUSTOM-1" in custom_ids
+    assert "DEFAULT-1" not in custom_ids
+
+
+def test_fetch_all_with_custom_identifier_column(mock_db_writer: Path) -> None:
+    db_writer.init_db(["Name"], identifier_column="SKU")
+    db_writer.save_results_bulk(
+        [("ABC-001", "Widget")], ["Name"], identifier_column="SKU"
+    )
+
+    df = db_writer.fetch_all(identifier_column="SKU")
+    assert df is not None
+    assert list(df.columns)[0] == "SKU"
+    assert df.iloc[0]["SKU"] == "ABC-001"

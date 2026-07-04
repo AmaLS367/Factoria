@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import sys
 from io import BytesIO
 from pathlib import Path
@@ -513,11 +514,196 @@ def test_get_item_sources_no_db(mock_exists: MagicMock) -> None:
     assert response.status_code == 404
 
 
-@patch("backend.api.routes.os.path.exists")
-def test_get_item_fields_no_db(mock_exists: MagicMock) -> None:
-    mock_exists.return_value = False
-    response = client.get("/items/foo/fields")
-    assert response.status_code == 404
+
+
+
+def _populate_db_with_item(db_path: str) -> None:
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS items ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "run_id INTEGER, "
+            "identifier_column TEXT, "
+            "identifier_value TEXT)"
+        )
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS item_fields ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "item_id INTEGER, "
+            "field_name TEXT, "
+            "field_value TEXT, "
+            "confidence REAL)"
+        )
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS item_sources ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "item_id INTEGER, "
+            "title TEXT, "
+            "url TEXT, "
+            "snippet TEXT, "
+            "provider TEXT, "
+            "credibility_score REAL, "
+            "retrieved_at TEXT)"
+        )
+
+        # Insert an item with custom identifier_column "SKU"
+        conn.execute(
+            "INSERT INTO items (identifier_column, identifier_value) VALUES (?, ?)",
+            ("SKU", "PART-001"),
+        )
+        conn.execute(
+            "INSERT INTO item_fields (item_id, field_name, field_value, confidence) "
+            "VALUES (?, ?, ?, ?)",
+            (1, "Name", "Widget", 0.95),
+        )
+
+        # Insert another item for fallback test
+        conn.execute(
+            "INSERT INTO items (identifier_column, identifier_value) VALUES (?, ?)",
+            ("WrongCol", "GADGET-001"),
+        )
+        conn.execute(
+            "INSERT INTO item_fields (item_id, field_name, field_value, confidence) "
+            "VALUES (?, ?, ?, ?)",
+            (2, "Name", "Gadget", 0.9),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_get_item_fields_with_custom_identifier_column(tmp_path: Path) -> None:
+    db_path = tmp_path / "test.db"
+    _populate_db_with_item(str(db_path))
+
+    with patch("backend.api.routes.os.path.exists", return_value=True):
+        with patch("backend.api.routes.get_db_path", return_value=str(db_path)):
+            response = client.get("/items/PART-001/fields?identifier_column=SKU")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["field_name"] == "Name"
+
+
+def test_get_item_fields_fallback_to_any_column(tmp_path: Path) -> None:
+    db_path = tmp_path / "test.db"
+    _populate_db_with_item(str(db_path))
+
+    with patch("backend.api.routes.os.path.exists", return_value=True):
+        with patch("backend.api.routes.get_db_path", return_value=str(db_path)):
+            response = client.get("/items/GADGET-001/fields?identifier_column=WrongCol")
+    # Matches by identifier_column "WrongCol" directly
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["field_value"] == "Gadget"
+
+
+def test_get_item_fields_fallback_triggers_value_only(tmp_path: Path) -> None:
+    db_path = tmp_path / "test.db"
+    _populate_db_with_item(str(db_path))
+
+    with patch("backend.api.routes.os.path.exists", return_value=True):
+        with patch("backend.api.routes.get_db_path", return_value=str(db_path)):
+            response = client.get("/items/PART-001/fields?identifier_column=Product%20ID")
+    # No item with identifier_column="Product ID" AND identifier_value="PART-001"
+    # But PART-001 exists with identifier_column="SKU" => fallback to value-only match
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["field_value"] == "Widget"
+
+
+def test_get_item_fields_no_db(tmp_path: Path) -> None:
+    with patch("backend.api.routes.os.path.exists", return_value=False):
+        response = client.get("/items/foo/fields")
+        assert response.status_code == 404
+
+
+def test_get_item_sources_with_custom_identifier_column(tmp_path: Path) -> None:
+    db_path = tmp_path / "test.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS items ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "identifier_column TEXT, "
+            "identifier_value TEXT)"
+        )
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS item_sources ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "item_id INTEGER, "
+            "title TEXT, "
+            "url TEXT, "
+            "snippet TEXT, "
+            "provider TEXT, "
+            "credibility_score REAL, "
+            "retrieved_at TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO items (identifier_column, identifier_value) VALUES (?, ?)",
+            ("SKU", "PART-002"),
+        )
+        conn.execute(
+            "INSERT INTO item_sources (item_id, title, url, snippet, provider, credibility_score) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (1, "Source 1", "http://example.com", "desc", "web", 0.8),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    with patch("backend.api.routes.os.path.exists", return_value=True):
+        with patch("backend.api.routes.get_db_path", return_value=str(db_path)):
+            response = client.get("/items/PART-002/sources?identifier_column=Product%20ID")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["url"] == "http://example.com"
+
+
+def test_get_item_sources_fallback_triggers_value_only(tmp_path: Path) -> None:
+    db_path = tmp_path / "test.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "CREATE TABLE items ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "identifier_column TEXT, "
+            "identifier_value TEXT)"
+        )
+        conn.execute(
+            "CREATE TABLE item_sources ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "item_id INTEGER, "
+            "title TEXT, "
+            "url TEXT, "
+            "snippet TEXT, "
+            "provider TEXT, "
+            "credibility_score REAL, "
+            "retrieved_at TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO items (identifier_column, identifier_value) VALUES (?, ?)",
+            ("StockCode", "FALLBACK-001"),
+        )
+        conn.execute(
+            "INSERT INTO item_sources (item_id, title, url, snippet, provider, credibility_score) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (1, "Found", "http://fallback.com", "desc", "web", 0.9),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    with patch("backend.api.routes.os.path.exists", return_value=True):
+        with patch("backend.api.routes.get_db_path", return_value=str(db_path)):
+            response = client.get("/items/FALLBACK-001/sources?identifier_column=Wrong")
+    assert response.status_code == 200
+    data = response.json()
+    assert data[0]["url"] == "http://fallback.com"
 
 
 def test_get_logs_invalid_lines() -> None:

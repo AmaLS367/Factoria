@@ -42,11 +42,15 @@ def create_run(input_file: str, output_file: str, model_name: str, web_search_pr
         conn.close()
 
 
-def init_db(fields: list[str], create_default_run: bool = True) -> None:
+def init_db(
+    fields: list[str], create_default_run: bool = True, identifier_column: str | None = None
+) -> None:
     from backend.db.alembic_runner import ensure_alembic_initialized
 
+    effective_id_col = identifier_column or settings.column_name
+
     # 1. Run Alembic migrations and handle any legacy bridge
-    ensure_alembic_initialized(settings.column_name, fields)
+    ensure_alembic_initialized(effective_id_col, fields)
 
     # 2. Open standard connection for post-initialization runs
     db_path = get_db_path()
@@ -77,18 +81,19 @@ def init_db(fields: list[str], create_default_run: bool = True) -> None:
     logger.info(f"Database initialized at {db_path} (create_default_run={create_default_run})")
 
 
-def get_all_existing_ids() -> set[str]:
+def get_all_existing_ids(identifier_column: str | None = None) -> set[str]:
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON")
     try:
         cur = conn.cursor()
+        effective_id_col = identifier_column or settings.column_name
         cur.execute(
             """
             SELECT identifier_value FROM items
             WHERE identifier_column = ?
             """,
-            (settings.column_name,),
+            (effective_id_col,),
         )
         return {row[0] for row in cur.fetchall()}
     finally:
@@ -96,12 +101,14 @@ def get_all_existing_ids() -> set[str]:
 
 
 def prepare_row_data(
-    item_id: str, data: dict[str, Any], output_fields: list[str]
+    item_id: str, data: dict[str, Any], output_fields: list[str],
+    identifier_column: str | None = None,
 ) -> tuple[str, ...]:
     """Prepare a row of data for database insertion."""
+    effective_id_col = identifier_column or settings.column_name
     return (
         item_id,
-        *[data.get(f, "Not found") for f in output_fields if f != settings.column_name],
+        *[data.get(f, "Not found") for f in output_fields if f != effective_id_col],
     )
 
 
@@ -112,10 +119,12 @@ def save_single_item(
     run_id: int | None = None,
     confidence: dict[str, float | None] | None = None,
     token_usage: TokenUsage | None = None,
+    identifier_column: str | None = None,
 ) -> None:
     """Initialize the database and save a single item's data."""
-    init_db(output_fields, create_default_run=(run_id is None))
-    row_data = prepare_row_data(item_id, data, output_fields)
+    effective_id_col = identifier_column or settings.column_name
+    init_db(output_fields, create_default_run=(run_id is None), identifier_column=effective_id_col)
+    row_data = prepare_row_data(item_id, data, output_fields, identifier_column=effective_id_col)
     conf_list = [confidence] if confidence is not None else None
     usage_list = [token_usage] if token_usage is not None else None
     save_results_bulk(
@@ -124,6 +133,7 @@ def save_single_item(
         run_id=run_id,
         confidence_list=conf_list,
         token_usage_list=usage_list,
+        identifier_column=effective_id_col,
     )
 
 
@@ -145,6 +155,7 @@ def save_results_bulk(
     run_id: int | None = None,
     confidence_list: list[dict[str, float | None]] | None = None,
     token_usage_list: list[TokenUsage] | None = None,
+    identifier_column: str | None = None,
 ) -> None:
     if not data_list:
         return
@@ -164,7 +175,8 @@ def save_results_bulk(
     conn.execute("PRAGMA foreign_keys = ON")
     cur = conn.cursor()
 
-    all_fields = [settings.column_name] + [f for f in fields if f != settings.column_name]
+    effective_id_col = identifier_column or settings.column_name
+    all_fields = [effective_id_col] + [f for f in fields if f != effective_id_col]
 
     for row_data in data_list:
         if len(row_data) < len(all_fields):
@@ -183,7 +195,7 @@ def save_results_bulk(
                     INSERT INTO items (run_id, identifier_column, identifier_value)
                     VALUES (?, ?, ?)
                     """,
-                    (active_run_id, settings.column_name, item_id),
+                    (active_run_id, effective_id_col, item_id),
                 )
                 db_item_id = cur.lastrowid
             except sqlite3.IntegrityError:
@@ -266,11 +278,15 @@ def save_results_bulk(
         conn.close()
 
 
-def fetch_all(run_id: int | None = None) -> pd.DataFrame | None:
+def fetch_all(
+    run_id: int | None = None, identifier_column: str | None = None
+) -> pd.DataFrame | None:
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON")
     try:
+        effective_id_col = identifier_column or settings.column_name
+
         # Fetch items
         if run_id is not None:
             items_df = pd.read_sql_query(
@@ -279,9 +295,9 @@ def fetch_all(run_id: int | None = None) -> pd.DataFrame | None:
         else:
             items_df = pd.read_sql_query("SELECT id, identifier_value FROM items", conn)
         if items_df.empty:
-            return pd.DataFrame(columns=[settings.column_name])
+            return pd.DataFrame(columns=[effective_id_col])
 
-        items_df = items_df.rename(columns={"identifier_value": settings.column_name})
+        items_df = items_df.rename(columns={"identifier_value": effective_id_col})
 
         # Fetch fields
         if settings.review_enabled:
@@ -348,7 +364,7 @@ def fetch_all(run_id: int | None = None) -> pd.DataFrame | None:
         merged = merged.drop(columns=["id"])
 
         # Ensure column_name is the first column
-        cols = [settings.column_name] + [c for c in merged.columns if c != settings.column_name]
+        cols = [effective_id_col] + [c for c in merged.columns if c != effective_id_col]
         merged = merged[cols]
 
         return merged

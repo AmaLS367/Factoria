@@ -113,10 +113,12 @@ def main(
 
     output_fields = ensure_sources_field(effective_fields)
 
+    effective_column = column_name or settings.column_name
+
     current_run_id = None
     if job_id:
         # Initialize schema without creating a default run
-        init_db(output_fields, create_default_run=False)
+        init_db(output_fields, create_default_run=False, identifier_column=effective_column)
         # Create a specific run for this job
         current_run_id = create_run(
             input_file_path,
@@ -135,11 +137,10 @@ def main(
             conn.close()
     else:
         # Normal CLI flow
-        init_db(output_fields)
+        init_db(output_fields, identifier_column=effective_column)
         current_run_id = db_writer._CURRENT_RUN_ID
 
     effective_sheet = sheet_name or settings.sheet_name
-    effective_column = column_name or settings.column_name
 
     try:
         if input_file_path.endswith(".csv"):
@@ -158,7 +159,7 @@ def main(
     buffer: list[tuple[str, ...]] = []
     batch_confidence: list[dict[str, float | None]] = []
     batch_token_usage: list[TokenUsage] = []
-    existing_ids = get_all_existing_ids()
+    existing_ids = get_all_existing_ids(identifier_column=effective_column)
     try:
         col_idx = list(df.columns).index(effective_column) + 1
     except ValueError:
@@ -196,7 +197,9 @@ def main(
                         item_id,
                         output_fields,
                     )
-                    row_data = prepare_row_data(item_id, parsed, output_fields)
+                    row_data = prepare_row_data(
+                        item_id, parsed, output_fields, identifier_column=effective_column
+                    )
                     buffer.append(row_data)
                     batch_confidence.append(conf)
                     batch_token_usage.append(item_usage)
@@ -213,6 +216,7 @@ def main(
                     run_id=current_run_id,
                     confidence_list=batch_confidence,
                     token_usage_list=batch_token_usage,
+                    identifier_column=effective_column,
                 )
                 buffer.clear()
                 batch_confidence.clear()
@@ -234,7 +238,9 @@ def main(
                         batch_usage.effective_llm_requests,
                     )
 
-        final_df = fetch_all(run_id=current_run_id if job_id else None)
+        final_df = fetch_all(
+            run_id=current_run_id if job_id else None, identifier_column=effective_column
+        )
         format_output_excel(output_file_path, final_df)
         logger.info("Data collection completed successfully")
         if job_id:
