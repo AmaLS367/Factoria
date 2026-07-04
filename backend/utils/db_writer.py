@@ -81,20 +81,32 @@ def init_db(
     logger.info(f"Database initialized at {db_path} (create_default_run={create_default_run})")
 
 
-def get_all_existing_ids(identifier_column: str | None = None) -> set[str]:
+def get_all_existing_ids(
+    identifier_column: str | None = None,
+    run_id: int | None = None,
+) -> set[str]:
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON")
     try:
         cur = conn.cursor()
         effective_id_col = identifier_column or settings.column_name
-        cur.execute(
-            """
-            SELECT identifier_value FROM items
-            WHERE identifier_column = ?
-            """,
-            (effective_id_col,),
-        )
+        if run_id is not None:
+            cur.execute(
+                """
+                SELECT identifier_value FROM items
+                WHERE identifier_column = ? AND run_id = ?
+                """,
+                (effective_id_col, run_id),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT identifier_value FROM items
+                WHERE identifier_column = ?
+                """,
+                (effective_id_col,),
+            )
         return {row[0] for row in cur.fetchall()}
     finally:
         conn.close()

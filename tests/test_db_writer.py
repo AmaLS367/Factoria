@@ -650,3 +650,97 @@ def test_fetch_all_with_custom_identifier_column(mock_db_writer: Path) -> None:
     assert df is not None
     assert list(df.columns)[0] == "SKU"
     assert df.iloc[0]["SKU"] == "ABC-001"
+
+
+def test_duplicate_identifier_same_run_skipped(mock_db_writer: Path) -> None:
+    """Same identifier in the same run does not create duplicate item data."""
+    db_writer.init_db(["Name"], create_default_run=False)
+    run_id = db_writer.create_run("in.xlsx", "out.xlsx", "model", "provider")
+
+    db_writer.save_results_bulk([("ABC-123", "First")], ["Name"], run_id=run_id)
+    db_writer.save_results_bulk([("ABC-123", "Second")], ["Name"], run_id=run_id)
+
+    conn = sqlite3.connect(mock_db_writer)
+    try:
+        items = conn.execute(
+            "SELECT identifier_value FROM items WHERE run_id = ?", (run_id,)
+        ).fetchall()
+        assert len(items) == 1
+        assert items[0][0] == "ABC-123"
+
+        field_value = conn.execute(
+            """SELECT f.field_value FROM item_fields f
+               JOIN items i ON f.item_id = i.id
+               WHERE i.identifier_value = 'ABC-123' AND i.run_id = ?""",
+            (run_id,),
+        ).fetchone()
+        assert field_value is not None
+        assert field_value[0] == "First"
+    finally:
+        conn.close()
+
+
+def test_same_identifier_different_runs_allowed(mock_db_writer: Path) -> None:
+    """The same identifier can be inserted in two different runs."""
+    db_writer.init_db(["Name"], create_default_run=False)
+    run_1 = db_writer.create_run("in1.xlsx", "out1.xlsx", "model", "provider")
+    run_2 = db_writer.create_run("in2.xlsx", "out2.xlsx", "model", "provider")
+
+    db_writer.save_results_bulk([("ABC-123", "From Run 1")], ["Name"], run_id=run_1)
+    db_writer.save_results_bulk([("ABC-123", "From Run 2")], ["Name"], run_id=run_2)
+
+    conn = sqlite3.connect(mock_db_writer)
+    try:
+        items = conn.execute("SELECT identifier_value FROM items").fetchall()
+        assert len(items) == 2
+        assert all(row[0] == "ABC-123" for row in items)
+    finally:
+        conn.close()
+
+    df1 = db_writer.fetch_all(run_id=run_1)
+    assert df1 is not None
+    assert len(df1) == 1
+
+    df2 = db_writer.fetch_all(run_id=run_2)
+    assert df2 is not None
+    assert len(df2) == 1
+
+
+def test_existing_ids_scoped_to_run(mock_db_writer: Path) -> None:
+    """Existing-ID lookup for Run A does not return items that only exist in Run B."""
+    db_writer.init_db(["Name"], create_default_run=False)
+    run_1 = db_writer.create_run("in1.xlsx", "out1.xlsx", "model", "provider")
+    run_2 = db_writer.create_run("in2.xlsx", "out2.xlsx", "model", "provider")
+
+    db_writer.save_results_bulk([("A", "Apple")], ["Name"], run_id=run_1)
+    db_writer.save_results_bulk([("B", "Banana")], ["Name"], run_id=run_2)
+
+    ids_run_1 = db_writer.get_all_existing_ids(run_id=run_1)
+    ids_run_2 = db_writer.get_all_existing_ids(run_id=run_2)
+
+    assert ids_run_1 == {"A"}
+    assert ids_run_2 == {"B"}
+
+    # Global lookup (no run_id) still returns all
+    ids_all = db_writer.get_all_existing_ids()
+    assert ids_all == {"A", "B"}
+
+
+def test_fields_scoped_to_run(mock_db_writer: Path) -> None:
+    """Fields belonging to one run do not contaminate another run."""
+    db_writer.init_db(["Name"], create_default_run=False)
+    run_1 = db_writer.create_run("in1.xlsx", "out1.xlsx", "model", "provider")
+    run_2 = db_writer.create_run("in2.xlsx", "out2.xlsx", "model", "provider")
+
+    db_writer.save_results_bulk([("ABC-123", "Apple")], ["Name"], run_id=run_1)
+    db_writer.save_results_bulk([("ABC-123", "Banana")], ["Name"], run_id=run_2)
+
+    df1 = db_writer.fetch_all(run_id=run_1)
+    assert df1 is not None
+    assert len(df1) == 1
+    assert df1[df1["Part Number"] == "ABC-123"].iloc[0]["Name"] == "Apple"
+
+    df2 = db_writer.fetch_all(run_id=run_2)
+    assert df2 is not None
+    assert len(df2) == 1
+    assert df2[df2["Part Number"] == "ABC-123"].iloc[0]["Name"] == "Banana"

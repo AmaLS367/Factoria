@@ -159,7 +159,7 @@ def main(
     buffer: list[tuple[str, ...]] = []
     batch_confidence: list[dict[str, float | None]] = []
     batch_token_usage: list[TokenUsage] = []
-    existing_ids = get_all_existing_ids(identifier_column=effective_column)
+    existing_ids = get_all_existing_ids(identifier_column=effective_column, run_id=current_run_id)
     try:
         col_idx = list(df.columns).index(effective_column) + 1
     except ValueError:

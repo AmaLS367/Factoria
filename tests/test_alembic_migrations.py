@@ -2,9 +2,10 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+from alembic import command
 
 from backend.config import settings
-from backend.db.alembic_runner import ensure_alembic_initialized
+from backend.db.alembic_runner import ensure_alembic_initialized, get_alembic_config
 
 
 @pytest.fixture
@@ -51,6 +52,62 @@ def test_fresh_database_alembic_initialization(mock_settings_db: Path) -> None:
 
         # Verify that the legacy schema_migrations table DOES NOT exist for fresh installations
         assert "schema_migrations" not in tables
+    finally:
+        conn.close()
+
+
+def test_alembic_upgrade_0001_to_0002_scopes_index(
+    mock_settings_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test that upgrading from 0001 to 0002 correctly scopes uniqueness to run_id."""
+    # Run the 0001 migration to create the old schema (tables + old index)
+    config = get_alembic_config()
+    command.upgrade(config, "0001")
+
+    # Verify we are at 0001 and the old index was global
+    conn = sqlite3.connect(mock_settings_db)
+    try:
+        version = conn.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+        assert version == "0001"
+
+        # Verify the old index exists
+        indexes = [
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_items_identifier'"
+            ).fetchall()
+        ]
+        assert len(indexes) == 1
+    finally:
+        conn.close()
+
+    # Upgrade to head (0002)
+    command.upgrade(config, "head")
+
+    # Verify we are now at 0002
+    conn = sqlite3.connect(mock_settings_db)
+    try:
+        version = conn.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+        assert version == "0002"
+    finally:
+        conn.close()
+
+    # Verify the new index works: same identifier allowed in different runs
+    import backend.utils.db_writer as db_writer
+    monkeypatch.setattr(db_writer, "settings", settings)
+
+    db_writer.init_db(["Name"], create_default_run=False)
+    run_1 = db_writer.create_run("in1.xlsx", "out1.xlsx", "model", "provider")
+    run_2 = db_writer.create_run("in2.xlsx", "out2.xlsx", "model", "provider")
+
+    db_writer.save_results_bulk([("ABC-123", "Run 1 Value")], ["Name"], run_id=run_1)
+    db_writer.save_results_bulk([("ABC-123", "Run 2 Value")], ["Name"], run_id=run_2)
+
+    conn = sqlite3.connect(mock_settings_db)
+    try:
+        items = conn.execute("SELECT identifier_value FROM items").fetchall()
+        assert len(items) == 2
+        assert all(row[0] == "ABC-123" for row in items)
     finally:
         conn.close()
 
