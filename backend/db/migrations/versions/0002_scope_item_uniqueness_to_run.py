@@ -33,6 +33,22 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    conn = op.get_bind()
+    result = conn.execute(
+        """
+        SELECT identifier_column, identifier_value, COUNT(*)
+        FROM items
+        GROUP BY identifier_column, identifier_value
+        HAVING COUNT(*) > 1
+        """
+    )
+    duplicates = result.fetchall()
+    if duplicates:
+        msg = (
+            f"Cannot downgrade: {len(duplicates)} identifier(s) exist in multiple runs. "
+            "Remove duplicate data before downgrading, or keep the run-scoped index."
+        )
+        raise ValueError(msg)
     op.drop_index("idx_items_identifier", table_name="items")
     op.create_index(
         "idx_items_identifier",

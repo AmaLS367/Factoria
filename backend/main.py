@@ -117,26 +117,31 @@ def main(
 
     current_run_id = None
     if job_id:
-        # Initialize schema without creating a default run
         init_db(output_fields, create_default_run=False, identifier_column=effective_column)
-        # Create a specific run for this job
-        current_run_id = create_run(
-            input_file_path,
-            output_file_path,
-            settings.model_name,
-            settings.web_search_provider,
-        )
-        # Link run_id to job
-        conn = sqlite3.connect(get_db_path())
-        try:
-            conn.execute("UPDATE jobs SET run_id = ? WHERE job_id = ?", (current_run_id, job_id))
-            conn.commit()
-        except Exception as e:
-            logger.error(f"Failed to associate run_id with job: {e}")
-        finally:
-            conn.close()
+
+        existing_run_id = job_record.get("run_id") if job_record else None
+        if existing_run_id is not None:
+            current_run_id = existing_run_id
+            logger.info(f"Reusing run {current_run_id} for job {job_id}")
+        else:
+            current_run_id = create_run(
+                input_file_path,
+                output_file_path,
+                settings.model_name,
+                settings.web_search_provider,
+            )
+            conn = sqlite3.connect(get_db_path())
+            try:
+                conn.execute(
+                    "UPDATE jobs SET run_id = ? WHERE job_id = ?",
+                    (current_run_id, job_id),
+                )
+                conn.commit()
+            except Exception as e:
+                logger.error(f"Failed to associate run_id with job: {e}")
+            finally:
+                conn.close()
     else:
-        # Normal CLI flow
         init_db(output_fields, identifier_column=effective_column)
         current_run_id = db_writer._CURRENT_RUN_ID
 
@@ -239,7 +244,7 @@ def main(
                     )
 
         final_df = fetch_all(
-            run_id=current_run_id if job_id else None, identifier_column=effective_column
+            run_id=current_run_id, identifier_column=effective_column
         )
         format_output_excel(output_file_path, final_df)
         logger.info("Data collection completed successfully")

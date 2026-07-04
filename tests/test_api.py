@@ -604,12 +604,9 @@ def test_get_item_fields_fallback_triggers_value_only(tmp_path: Path) -> None:
     with patch("backend.api.routes.os.path.exists", return_value=True):
         with patch("backend.api.routes.get_db_path", return_value=str(db_path)):
             response = client.get("/items/PART-001/fields?identifier_column=Product%20ID")
-    # No item with identifier_column="Product ID" AND identifier_value="PART-001"
-    # But PART-001 exists with identifier_column="SKU" => fallback to value-only match
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 1
-    assert data[0]["field_value"] == "Widget"
+    # The value-only fallback was removed because it is ambiguous across runs.
+    # A non-matching identifier_column now returns 404.
+    assert response.status_code == 404
 
 
 def test_get_item_fields_no_db(tmp_path: Path) -> None:
@@ -654,7 +651,7 @@ def test_get_item_sources_with_custom_identifier_column(tmp_path: Path) -> None:
 
     with patch("backend.api.routes.os.path.exists", return_value=True):
         with patch("backend.api.routes.get_db_path", return_value=str(db_path)):
-            response = client.get("/items/PART-002/sources?identifier_column=Product%20ID")
+            response = client.get("/items/PART-002/sources?identifier_column=SKU")
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 1
@@ -698,9 +695,8 @@ def test_get_item_sources_fallback_triggers_value_only(tmp_path: Path) -> None:
     with patch("backend.api.routes.os.path.exists", return_value=True):
         with patch("backend.api.routes.get_db_path", return_value=str(db_path)):
             response = client.get("/items/FALLBACK-001/sources?identifier_column=Wrong")
-    assert response.status_code == 200
-    data = response.json()
-    assert data[0]["url"] == "http://fallback.com"
+    # The value-only fallback was removed because it is ambiguous across runs.
+    assert response.status_code == 404
 
 
 def test_get_logs_invalid_lines() -> None:

@@ -340,6 +340,24 @@ def retry_excel_job(job_id: str, background_tasks: BackgroundTasks) -> dict[str,
         target_fields=parsed_fields,
         item_label=item_label,
     )
+
+    # Associate the retry job with the original run so existing-ID lookup
+    # finds already-processed items and the retry continues from where it left off
+    original_run_id = job.get("run_id")
+    if original_run_id is not None:
+        db_path = get_db_path()
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.execute(
+                "UPDATE jobs SET run_id = ? WHERE job_id = ?",
+                (original_run_id, new_job_id),
+            )
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Failed to associate run_id with retry job: {e}")
+        finally:
+            conn.close()
+
     background_tasks.add_task(
         run_excel_job, new_job_id, old_input, new_output, sheet_name, column_name
     )
@@ -435,6 +453,7 @@ def export_latest() -> Any:
 def get_item_fields(
     identifier_value: str,
     identifier_column: str | None = Query(default=None),
+    run_id: int | None = Query(default=None),
 ) -> list[dict[str, Any]]:
     db_path = get_db_path()
     if not os.path.exists(db_path):
@@ -443,15 +462,27 @@ def get_item_fields(
     conn.row_factory = sqlite3.Row
     try:
         resolved_column = identifier_column or settings.column_name
-        row = conn.execute(
-            "SELECT id FROM items WHERE identifier_column = ? AND identifier_value = ?",
-            (resolved_column, identifier_value),
-        ).fetchone()
-        if not row:
+
+        if run_id is not None:
             row = conn.execute(
-                "SELECT id FROM items WHERE identifier_value = ?",
-                (identifier_value,),
+                "SELECT id FROM items"
+                " WHERE identifier_column = ? AND identifier_value = ? AND run_id = ?",
+                (resolved_column, identifier_value, run_id),
             ).fetchone()
+        else:
+            rows = conn.execute(
+                "SELECT id FROM items"
+                " WHERE identifier_column = ? AND identifier_value = ?",
+                (resolved_column, identifier_value),
+            ).fetchall()
+            if len(rows) > 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Ambiguous identifier: matches multiple runs."
+                    " Provide run_id to disambiguate.",
+                )
+            row = rows[0] if rows else None
+
         if not row:
             raise HTTPException(status_code=404, detail="Item not found")
         fields = conn.execute(
@@ -467,6 +498,7 @@ def get_item_fields(
 def get_item_sources(
     identifier_value: str,
     identifier_column: str | None = Query(default=None),
+    run_id: int | None = Query(default=None),
 ) -> list[dict[str, Any]]:
     db_path = get_db_path()
     if not os.path.exists(db_path):
@@ -475,15 +507,27 @@ def get_item_sources(
     conn.row_factory = sqlite3.Row
     try:
         resolved_column = identifier_column or settings.column_name
-        row = conn.execute(
-            "SELECT id FROM items WHERE identifier_column = ? AND identifier_value = ?",
-            (resolved_column, identifier_value),
-        ).fetchone()
-        if not row:
+
+        if run_id is not None:
             row = conn.execute(
-                "SELECT id FROM items WHERE identifier_value = ?",
-                (identifier_value,),
+                "SELECT id FROM items"
+                " WHERE identifier_column = ? AND identifier_value = ? AND run_id = ?",
+                (resolved_column, identifier_value, run_id),
             ).fetchone()
+        else:
+            rows = conn.execute(
+                "SELECT id FROM items"
+                " WHERE identifier_column = ? AND identifier_value = ?",
+                (resolved_column, identifier_value),
+            ).fetchall()
+            if len(rows) > 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Ambiguous identifier: matches multiple runs."
+                    " Provide run_id to disambiguate.",
+                )
+            row = rows[0] if rows else None
+
         if not row:
             raise HTTPException(status_code=404, detail="Item not found")
         item_id = row["id"]
