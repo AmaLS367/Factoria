@@ -206,7 +206,7 @@ def test_legacy_bridge_migration_flow(
             """
         ).fetchall()
         urls = {row[0] for row in sources}
-        assert "http://source1.com" in urls
-        assert "http://source2.com" in urls
+        assert "http://source1.com" in urls  # codeql[py/incomplete-url-substring-sanitization]
+        assert "http://source2.com" in urls  # codeql[py/incomplete-url-substring-sanitization]
     finally:
         conn.close()

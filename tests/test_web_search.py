@@ -162,7 +162,7 @@ def test_prompt_includes_web_context_and_sources_field() -> None:
 
     assert "Use this web search context as the primary evidence" in prompt
     assert "Sources" in prompt
-    assert "https://example.com" in prompt
+    assert "https://example.com" in prompt  # codeql[py/incomplete-url-substring-sanitization]
 
 
 def test_cli_search_mode_outputs_json(
