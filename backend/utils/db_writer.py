@@ -113,7 +113,9 @@ def get_all_existing_ids(
 
 
 def prepare_row_data(
-    item_id: str, data: dict[str, Any], output_fields: list[str],
+    item_id: str,
+    data: dict[str, Any],
+    output_fields: list[str],
     identifier_column: str | None = None,
 ) -> tuple[str, ...]:
     """Prepare a row of data for database insertion."""

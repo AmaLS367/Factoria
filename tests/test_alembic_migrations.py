@@ -94,6 +94,7 @@ def test_alembic_upgrade_0001_to_0002_scopes_index(
 
     # Verify the new index works: same identifier allowed in different runs
     import backend.utils.db_writer as db_writer
+
     monkeypatch.setattr(db_writer, "settings", settings)
 
     db_writer.init_db(["Name"], create_default_run=False)

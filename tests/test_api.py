@@ -514,9 +514,6 @@ def test_get_item_sources_no_db(mock_exists: MagicMock) -> None:
     assert response.status_code == 404
 
 
-
-
-
 def _populate_db_with_item(db_path: str) -> None:
     conn = sqlite3.connect(db_path)
     try:

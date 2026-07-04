@@ -265,14 +265,17 @@ def test_batch_main_uses_research_agent_and_persists_sources(
         "init_db",
         lambda flds, create_default_run=True, **kwargs: initialized_fields.extend(flds),
     )
+
     def _mock_save_bulk(
-        data: list[tuple[str, ...]], fields: list[str],
+        data: list[tuple[str, ...]],
+        fields: list[str],
         run_id: int | None = None,
         confidence_list: list[dict[str, float | None]] | None = None,
         token_usage_list: list[TokenUsage] | None = None,
         **kwargs: object,
     ) -> None:
         saved.extend(data)
+
     monkeypatch.setattr(batch_main, "save_results_bulk", _mock_save_bulk)
     monkeypatch.setattr(batch_main, "fetch_all", lambda run_id=None: None)
     monkeypatch.setattr(batch_main, "format_output_excel", lambda filepath, df: None)

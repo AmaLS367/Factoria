@@ -596,9 +596,7 @@ def test_custom_identifier_column_persistence(mock_db_writer: Path) -> None:
 
     conn = sqlite3.connect(mock_db_writer)
     try:
-        item = conn.execute(
-            "SELECT identifier_column, identifier_value FROM items"
-        ).fetchone()
+        item = conn.execute("SELECT identifier_column, identifier_value FROM items").fetchone()
         assert item is not None
         assert item[0] == "SKU"
         assert item[1] == "ABC-001"
@@ -642,9 +640,7 @@ def test_default_vs_custom_identifier_isolation(mock_db_writer: Path) -> None:
 
 def test_fetch_all_with_custom_identifier_column(mock_db_writer: Path) -> None:
     db_writer.init_db(["Name"], identifier_column="SKU")
-    db_writer.save_results_bulk(
-        [("ABC-001", "Widget")], ["Name"], identifier_column="SKU"
-    )
+    db_writer.save_results_bulk([("ABC-001", "Widget")], ["Name"], identifier_column="SKU")
 
     df = db_writer.fetch_all(identifier_column="SKU")
     assert df is not None
