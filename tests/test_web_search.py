@@ -259,17 +259,21 @@ def test_batch_main_uses_research_agent_and_persists_sources(
         lambda *args, **kwargs: batch_module.pd.DataFrame({"Part Number": ["ABC-123"]}),
     )
     monkeypatch.setattr(batch_main, "ResearchAgent", FakeResearchAgent)
-    monkeypatch.setattr(batch_main, "get_all_existing_ids", lambda: set())
-    monkeypatch.setattr(
-        batch_main, "init_db", lambda flds, create_default_run=True: initialized_fields.extend(flds)
-    )
+    monkeypatch.setattr(batch_main, "get_all_existing_ids", lambda **kwargs: set())
     monkeypatch.setattr(
         batch_main,
-        "save_results_bulk",
-        lambda data, fields, run_id=None, confidence_list=None, token_usage_list=None: saved.extend(
-            data
-        ),
+        "init_db",
+        lambda flds, create_default_run=True, **kwargs: initialized_fields.extend(flds),
     )
+    def _mock_save_bulk(
+        data: list[tuple[str, ...]], fields: list[str],
+        run_id: int | None = None,
+        confidence_list: list[dict[str, float | None]] | None = None,
+        token_usage_list: list[TokenUsage] | None = None,
+        **kwargs: object,
+    ) -> None:
+        saved.extend(data)
+    monkeypatch.setattr(batch_main, "save_results_bulk", _mock_save_bulk)
     monkeypatch.setattr(batch_main, "fetch_all", lambda run_id=None: None)
     monkeypatch.setattr(batch_main, "format_output_excel", lambda filepath, df: None)
 
@@ -312,7 +316,7 @@ def test_batch_main_handles_input_file_read_error(
         raise ValueError("Simulated read error")
 
     monkeypatch.setattr(batch_module.pd, "read_excel", fake_read_excel)
-    monkeypatch.setattr(batch_main, "init_db", lambda fields: None)
+    monkeypatch.setattr(batch_main, "init_db", lambda fields, **kwargs: None)
 
     with caplog.at_level(logging.ERROR):
         batch_main.main()

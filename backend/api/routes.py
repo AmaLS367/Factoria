@@ -12,7 +12,7 @@ import uuid
 from typing import Any, Literal
 
 import pandas as pd
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
@@ -432,17 +432,26 @@ def export_latest() -> Any:
 
 
 @router.get("/items/{identifier_value}/fields")
-def get_item_fields(identifier_value: str) -> list[dict[str, Any]]:
+def get_item_fields(
+    identifier_value: str,
+    identifier_column: str | None = Query(default=None),
+) -> list[dict[str, Any]]:
     db_path = get_db_path()
     if not os.path.exists(db_path):
         raise HTTPException(status_code=404, detail="Item not found")
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
+        resolved_column = identifier_column or settings.column_name
         row = conn.execute(
             "SELECT id FROM items WHERE identifier_column = ? AND identifier_value = ?",
-            (settings.column_name, identifier_value),
+            (resolved_column, identifier_value),
         ).fetchone()
+        if not row:
+            row = conn.execute(
+                "SELECT id FROM items WHERE identifier_value = ?",
+                (identifier_value,),
+            ).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Item not found")
         fields = conn.execute(
@@ -455,17 +464,26 @@ def get_item_fields(identifier_value: str) -> list[dict[str, Any]]:
 
 
 @router.get("/items/{identifier_value}/sources")
-def get_item_sources(identifier_value: str) -> list[dict[str, Any]]:
+def get_item_sources(
+    identifier_value: str,
+    identifier_column: str | None = Query(default=None),
+) -> list[dict[str, Any]]:
     db_path = get_db_path()
     if not os.path.exists(db_path):
         raise HTTPException(status_code=404, detail="Item not found")
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
+        resolved_column = identifier_column or settings.column_name
         row = conn.execute(
             "SELECT id FROM items WHERE identifier_column = ? AND identifier_value = ?",
-            (settings.column_name, identifier_value),
+            (resolved_column, identifier_value),
         ).fetchone()
+        if not row:
+            row = conn.execute(
+                "SELECT id FROM items WHERE identifier_value = ?",
+                (identifier_value,),
+            ).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Item not found")
         item_id = row["id"]
