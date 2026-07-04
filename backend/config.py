@@ -99,6 +99,15 @@ class Settings(BaseSettings):
     review_enabled: bool = True
     review_confidence_threshold: float = 0.6
 
+    # CORS Settings
+    cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ]
+    cors_allow_credentials: bool = False
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
