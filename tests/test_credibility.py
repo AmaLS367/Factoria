@@ -1,3 +1,5 @@
+import pytest
+
 from backend.utils.credibility import score_source
 
 
@@ -65,3 +67,41 @@ def test_no_tld_returns_baseline_plus_https() -> None:
     # localhost has no dot in netloc
     score = score_source("https://localhost")
     assert score == 0.5
+
+
+def test_empty_string_url() -> None:
+    assert score_source("") == 0.4
+
+
+def test_ansi_and_ieee_trusted_domains() -> None:
+    ansi_score = score_source("https://ansi.org")
+    # 0.4 + 0.1 + 0.05 (.org) + 0.15 (ansi.org) = 0.7
+    assert ansi_score == 0.7
+
+    ieee_score = score_source("https://standards.ieee.org/spec")
+    # 0.4 + 0.1 + 0.05 (.org) + 0.2 (standards.ieee.org) = 0.75
+    assert ieee_score == 0.75
+
+
+def test_url_with_query_params_and_fragment() -> None:
+    score = score_source("https://iso.org/contents?section=1#heading")
+    # 0.4 + 0.1 + 0.05 + 0.2 = 0.75
+    assert score == 0.75
+
+
+def test_non_http_https_scheme() -> None:
+    score = score_source("ftp://iso.org/file.txt")
+    # 0.4 (no https) + 0.05 (.org) + 0.2 (iso.org) = 0.65
+    assert score == 0.65
+
+
+def test_urlparse_exception_handled(monkeypatch: pytest.MonkeyPatch) -> None:
+    def mock_urlparse_raises(url: str) -> None:
+        raise ValueError("Malformed URL")
+
+    import backend.utils.credibility as cred
+
+    monkeypatch.setattr(cred, "urlparse", mock_urlparse_raises)
+
+    assert cred.score_source("https://broken-url") == 0.5
+    assert cred.score_source("http://broken-url") == 0.4
