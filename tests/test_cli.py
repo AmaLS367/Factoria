@@ -1,3 +1,4 @@
+import json
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -118,3 +119,16 @@ def test_run_review_mode_interactive_edit(mock_fetch: MagicMock, mock_update: Ma
             field_value="new description",
             reviewer_note="fixed typo",
         )
+
+
+@patch("sys.argv", ["cli.py", "--json"])
+@patch("backend.cli.fetch_review_queue")
+def test_main_with_json_flag_outputs_review_queue(mock_fetch: MagicMock, capsys: Any) -> None:
+    mock_fetch.return_value = [
+        {"field_id": 100, "field_name": "material", "review_status": "needs_review"}
+    ]
+    cli.main()
+    captured = capsys.readouterr()
+    mock_fetch.assert_called_once_with(status="needs_review", limit=100)
+    data = json.loads(captured.out)
+    assert data == [{"field_id": 100, "field_name": "material", "review_status": "needs_review"}]

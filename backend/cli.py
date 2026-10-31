@@ -166,7 +166,8 @@ def main() -> None:
     parser.add_argument("--json", action="store_true", help="Print review queue as JSON")
     args = parser.parse_args()
 
-    if args.review:
+    # Handle review mode: interactive prompt (--review) or non-interactive JSON dump (--json)
+    if args.review or args.json:
         run_review_mode(limit=args.limit, as_json=args.json)
         return
 
