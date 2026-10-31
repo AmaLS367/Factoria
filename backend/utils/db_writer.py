@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_db_path() -> str:
+    """Return the configured database path as an absolute path."""
     return os.path.abspath(settings.db_path)
 
 
@@ -22,6 +23,20 @@ SOURCES_FIELD_NAME = "Sources"
 
 
 def create_run(input_file: str, output_file: str, model_name: str, web_search_provider: str) -> int:
+    """Insert a run record describing one collection execution.
+
+    Args:
+        input_file: Input path associated with the run.
+        output_file: Output path associated with the run.
+        model_name: LLM model recorded for the run.
+        web_search_provider: Search provider recorded for the run.
+
+    Returns:
+        Database ID assigned to the new run.
+
+    Raises:
+        RuntimeError: If SQLite does not return an inserted row ID.
+    """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
     try:
@@ -45,6 +60,13 @@ def create_run(input_file: str, output_file: str, model_name: str, web_search_pr
 def init_db(
     fields: list[str], create_default_run: bool = True, identifier_column: str | None = None
 ) -> None:
+    """Initialize the schema and optionally create or reuse the process's current run.
+
+    Args:
+        fields: Output fields used by database initialization and legacy migration.
+        create_default_run: If true, establish a current run for writes without an explicit ID.
+        identifier_column: Item identifier column; defaults to the configured column.
+    """
     from backend.db.alembic_runner import ensure_alembic_initialized
 
     effective_id_col = identifier_column or settings.column_name
@@ -85,6 +107,7 @@ def get_all_existing_ids(
     identifier_column: str | None = None,
     run_id: int | None = None,
 ) -> set[str]:
+    """Return identifiers already stored for a column, optionally within a run."""
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON")
@@ -118,7 +141,18 @@ def prepare_row_data(
     output_fields: list[str],
     identifier_column: str | None = None,
 ) -> tuple[str, ...]:
-    """Prepare a row of data for database insertion."""
+    """Build a database row with the identifier first, followed by requested values.
+
+    Args:
+        item_id: Value stored in the identifier column.
+        data: Mapping from output field names to extracted values.
+        output_fields: Field names to include, in database column order.
+        identifier_column: Identifier field to exclude from the value columns; defaults to settings.
+
+    Returns:
+        Tuple containing ``item_id`` and one value per non-identifier output field. Missing values
+        are represented as ``Not found``.
+    """
     effective_id_col = identifier_column or settings.column_name
     return (
         item_id,
@@ -135,7 +169,17 @@ def save_single_item(
     token_usage: TokenUsage | None = None,
     identifier_column: str | None = None,
 ) -> None:
-    """Initialize the database and save a single item's data."""
+    """Initialize the database and persist one item's values and usage.
+
+    Args:
+        item_id: Value stored in the identifier column.
+        data: Mapping from output field names to extracted values.
+        output_fields: Field names expected in ``data`` and written to the database.
+        run_id: Run to associate with the item; if omitted, the current run is initialized or reused.
+        confidence: Optional confidence score for each output field.
+        token_usage: Optional LLM token and cost totals for this item.
+        identifier_column: Identifier field name; defaults to the configured column.
+    """
     effective_id_col = identifier_column or settings.column_name
     init_db(output_fields, create_default_run=(run_id is None), identifier_column=effective_id_col)
     row_data = prepare_row_data(item_id, data, output_fields, identifier_column=effective_id_col)
@@ -152,6 +196,15 @@ def save_single_item(
 
 
 def determine_review_status(field_value: str | None, confidence: float | None) -> str:
+    """Choose whether an extracted field should enter the human review queue.
+
+    Args:
+        field_value: Extracted text, if available.
+        confidence: Confidence score in the range 0–1, if available.
+
+    Returns:
+        ``needs_review`` for missing or low-confidence data, otherwise ``auto_accepted``.
+    """
     if not settings.review_enabled:
         return "auto_accepted"
     if field_value is None or field_value.strip() == "" or field_value == "Not found":
@@ -171,6 +224,20 @@ def save_results_bulk(
     token_usage_list: list[TokenUsage] | None = None,
     identifier_column: str | None = None,
 ) -> None:
+    """Insert item rows and their field values, sources, and token usage.
+
+    Args:
+        data_list: Rows with the identifier first, followed by values matching ``fields``.
+        fields: Output field names in the same order as the row values.
+        run_id: Run to associate with the rows; defaults to the initialized current run.
+        confidence_list: Optional per-row confidence mappings keyed by field name.
+        token_usage_list: Optional per-row LLM usage records.
+        identifier_column: Identifier field name; defaults to the configured column.
+
+    Raises:
+        RuntimeError: If no explicit or initialized current run is available.
+        ValueError: If a row contains fewer values than the expected fields.
+    """
     if not data_list:
         return
 
@@ -295,6 +362,15 @@ def save_results_bulk(
 def fetch_all(
     run_id: int | None = None, identifier_column: str | None = None
 ) -> pd.DataFrame | None:
+    """Fetch results for a run, or all runs when no run ID is given.
+
+    Args:
+        run_id: Run to fetch; if omitted, include items from every run.
+        identifier_column: Name to use for the identifier column in the result.
+
+    Returns:
+        A DataFrame of results, or ``None`` if a database error occurs.
+    """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON")
@@ -396,6 +472,17 @@ def fetch_review_queue(
     offset: int = 0,
     job_id: str | None = None,
 ) -> list[dict[str, Any]]:
+    """Fetch a page of field records matching a review status.
+
+    Args:
+        status: Review status to filter by.
+        limit: Maximum number of records to return.
+        offset: Number of matching records to skip.
+        job_id: Optional job identifier to restrict the results.
+
+    Returns:
+        Review records with field, item, confidence, and job metadata.
+    """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -445,6 +532,20 @@ def update_field_review(
     field_value: str | None = None,
     reviewer_note: str | None = None,
 ) -> dict[str, Any] | None:
+    """Apply an approval, correction, or rejection to a field record.
+
+    Args:
+        field_id: Database ID of the field record.
+        status: One of ``approved``, ``corrected``, or ``rejected``.
+        field_value: Required non-empty replacement when status is ``corrected``.
+        reviewer_note: Optional note saved with the review decision.
+
+    Returns:
+        Updated field record, or ``None`` if no field has the requested ID.
+
+    Raises:
+        ValueError: If the status is invalid or a correction value is empty.
+    """
     allowed_statuses = {"approved", "corrected", "rejected"}
     if status not in allowed_statuses:
         raise ValueError(f"Invalid review status: {status}")
@@ -518,6 +619,14 @@ def update_field_review(
 
 
 def get_review_summary(job_id: str | None = None) -> dict[str, int]:
+    """Count fields by review status, optionally limited to one job.
+
+    Args:
+        job_id: Optional job identifier used to scope the counts.
+
+    Returns:
+        Mapping of status names to counts, including statuses with zero records.
+    """
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
     try:

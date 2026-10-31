@@ -15,15 +15,24 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class SearchResult:
+    """Normalized web search result containing a title, URL, and snippet."""
+
     title: str
     url: str
     snippet: str
 
     def to_dict(self) -> dict[str, str]:
+        """Serialize this result.
+
+        Returns:
+            Dictionary with title, url, and snippet keys.
+        """
         return {"title": self.title, "url": self.url, "snippet": self.snippet}
 
 
 class SearchProvider(Protocol):
+    """Protocol for implementations that return normalized search results."""
+
     def search(self, query: str) -> list[SearchResult]:
         """Return normalized search results for the query."""
 
@@ -32,6 +41,13 @@ class ApiSearchProvider(ABC):
     """Base class for API-based search providers requiring an API key."""
 
     def __init__(self, api_key: str, max_results: int, timeout_seconds: int) -> None:
+        """Configure an API provider.
+
+        Args:
+            api_key: Credential sent with provider requests.
+            max_results: Maximum results requested from the API.
+            timeout_seconds: HTTP request timeout.
+        """
         self.api_key = api_key
         self.max_results = max_results
         self.timeout_seconds = timeout_seconds
@@ -42,8 +58,19 @@ class ApiSearchProvider(ABC):
 
 
 class TavilySearchProvider(ApiSearchProvider):
+    """Search provider backed by the Tavily API."""
+
     def search(self, query: str) -> list[SearchResult]:
+        """Search for a query and normalize the provider response.
+
+        Args:
+            query: Search phrase sent to the provider.
+
+        Returns:
+            Normalized results returned by Tavily.
+        """
         def _call_api() -> requests.Response:
+            """Send one HTTP search request and return its successful response."""
             res = requests.post(
                 "https://api.tavily.com/search",
                 headers={"Authorization": f"Bearer {self.api_key}"},
@@ -78,10 +105,21 @@ class TavilySearchProvider(ApiSearchProvider):
 
 
 class BraveSearchProvider(ApiSearchProvider):
+    """Search provider backed by the Brave Search API."""
+
     def search(self, query: str) -> list[SearchResult]:
+        """Search for a query and normalize the provider response.
+
+        Args:
+            query: Search phrase sent to the provider.
+
+        Returns:
+            Normalized results returned by Brave Search.
+        """
         params: dict[str, str | int] = {"q": query, "count": self.max_results}
 
         def _call_api() -> requests.Response:
+            """Send one HTTP search request and return its successful response."""
             res = requests.get(
                 "https://api.search.brave.com/res/v1/web/search",
                 headers={
@@ -117,12 +155,29 @@ class BraveSearchProvider(ApiSearchProvider):
 
 
 class DdgsSearchProvider:
+    """Search provider backed by the DuckDuckGo search package."""
+
     def __init__(self, max_results: int, timeout_seconds: int, region: str) -> None:
+        """Configure DuckDuckGo search limits.
+
+        Args:
+            max_results: Maximum results requested for each query.
+            timeout_seconds: Search request timeout.
+            region: DuckDuckGo region code.
+        """
         self.max_results = max_results
         self.timeout_seconds = timeout_seconds
         self.region = region
 
     def search(self, query: str) -> list[SearchResult]:
+        """Search for a query and normalize the provider response.
+
+        Args:
+            query: Search phrase sent to the provider.
+
+        Returns:
+            Normalized results returned by DuckDuckGo.
+        """
         with DDGS(timeout=self.timeout_seconds) as ddgs:
             raw_results = list(
                 cast(
@@ -142,6 +197,8 @@ class DdgsSearchProvider:
 
 
 class WebSearchTool:
+    """Search facade that applies settings, caching, and provider fallback."""
+
     def __init__(
         self,
         provider: str | None = None,
@@ -151,6 +208,16 @@ class WebSearchTool:
         region: str | None = None,
         enabled: bool | None = None,
     ) -> None:
+        """Resolve search settings and optional per-instance overrides.
+
+        Args:
+            provider: Search provider name; defaults to the configured provider.
+            api_key: Provider credential; defaults to the configured search key.
+            max_results: Maximum results per query; defaults to the configured limit.
+            timeout_seconds: Request timeout; defaults to the configured timeout.
+            region: Search region; defaults to the configured region.
+            enabled: Whether searching is enabled; defaults to the configured flag.
+        """
         self.enabled = settings.web_search_enabled if enabled is None else enabled
         self.provider_name = (provider or settings.web_search_provider).strip().lower()
         self.api_key = settings.web_search_api_key if api_key is None else api_key
@@ -159,6 +226,14 @@ class WebSearchTool:
         self.region = region or settings.web_search_region
 
     def search(self, query: str) -> list[SearchResult]:
+        """Search using the selected provider, optionally caching successful results.
+
+        Args:
+            query: Search phrase sent to the provider.
+
+        Returns:
+            Normalized results, or an empty list when disabled or when any search error occurs.
+        """
         if not self.enabled:
             return []
 
@@ -200,6 +275,11 @@ class WebSearchTool:
             return []
 
     def _provider(self) -> SearchProvider:
+        """Instantiate the selected provider, falling back to DDGS if needed.
+
+        Returns:
+            Search provider configured with the current limits and credentials.
+        """
         if self.provider_name == "tavily" and self.api_key:
             return TavilySearchProvider(self.api_key, self.max_results, self.timeout_seconds)
         if self.provider_name == "brave" and self.api_key:
@@ -217,6 +297,14 @@ class WebSearchTool:
 
 
 def format_search_context(results: list[SearchResult]) -> str:
+    """Format results as numbered evidence for an LLM prompt.
+
+    Args:
+        results: Search results to include.
+
+    Returns:
+        Formatted evidence text, or a no-results message.
+    """
     if not results:
         return "No web search results were found."
 
@@ -227,17 +315,41 @@ def format_search_context(results: list[SearchResult]) -> str:
 
 
 def format_sources(results: list[SearchResult]) -> str:
+    """Join unique non-empty result URLs.
+
+    Args:
+        results: Search results whose URLs should be retained.
+
+    Returns:
+        Newline-separated URLs, or ``Not found`` when none are available.
+    """
     urls = [result.url for result in results if result.url]
     return "\n".join(dict.fromkeys(urls)) if urls else "Not found"
 
 
 def _dict_list(value: object) -> list[dict[str, object]]:
+    """Filter a possibly malformed API value to dictionary elements.
+
+    Args:
+        value: Value returned by a search API.
+
+    Returns:
+        Dictionary elements if value is a list; otherwise an empty list.
+    """
     if not isinstance(value, list):
         return []
     return [cast(dict[str, object], item) for item in value if isinstance(item, dict)]
 
 
 def _as_text(value: object) -> str:
+    """Convert an API value to a string, mapping ``None`` to an empty string.
+
+    Args:
+        value: Value returned by a search API.
+
+    Returns:
+        String representation or an empty string.
+    """
     if value is None:
         return ""
     return str(value)

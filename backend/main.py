@@ -46,6 +46,12 @@ logger = logging.getLogger(__name__)
 
 
 def format_output_excel(filepath: str, df: pd.DataFrame | None) -> None:
+    """Write a DataFrame to a formatted Excel workbook.
+
+    Args:
+        filepath: Destination workbook path.
+        df: Data to write; ``None`` or an empty frame is ignored.
+    """
     if df is None or df.empty:
         logger.warning("No data to save to Excel.")
         return
@@ -86,6 +92,15 @@ def main(
     sheet_name: str | None = None,
     column_name: str | None = None,
 ) -> None:
+    """Process an input spreadsheet and save collected results.
+
+    Args:
+        job_id: Optional job record to update while processing.
+        input_file: Input CSV or Excel path; defaults to application settings.
+        output_file: Output workbook path; defaults to application settings.
+        sheet_name: Worksheet to read; defaults to application settings.
+        column_name: Identifier column; defaults to application settings.
+    """
     logger.info("Starting AI Data Collector")
 
     input_file_path = input_file or settings.input_file

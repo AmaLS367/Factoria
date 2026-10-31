@@ -24,6 +24,11 @@ target_metadata = None
 
 
 def get_db_url() -> str:
+    """Ensure the database directory exists and return its SQLite URL.
+
+    Returns:
+        SQLAlchemy-compatible SQLite URL for the configured database.
+    """
     db_path = settings.db_path
     db_dir = os.path.dirname(os.path.abspath(db_path))
     os.makedirs(db_dir, exist_ok=True)
@@ -40,7 +45,6 @@ def run_migrations_offline() -> None:
 
     Calls to context.execute() here emit the given string to the
     script output.
-
     """
     url = get_db_url()
     context.configure(
@@ -59,7 +63,6 @@ def run_migrations_online() -> None:
 
     In this scenario we need to create an Engine
     and associate a connection with the context.
-
     """
     url = get_db_url()
     connectable = create_engine(url, poolclass=pool.NullPool)

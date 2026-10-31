@@ -10,7 +10,7 @@ TRUSTED_DOMAINS: dict[str, float] = {
 
 
 def score_source(url: str) -> float:
-    """Return a 0.0–1.0 credibility score for a source URL based on heuristics."""
+    """Return a 0.0-1.0 credibility score for a source URL based on heuristics."""
     score = 0.4
 
     if url.startswith("https://"):

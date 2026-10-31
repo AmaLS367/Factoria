@@ -20,22 +20,35 @@ SOURCES_FIELD = "Sources"
 
 
 class AnswerClient(Protocol):
+    """Protocol for an LLM client that returns generated text and usage."""
+
     def get_answer(self, prompt: str) -> tuple[str, TokenUsage]:
         """Return an LLM answer and token usage for the prompt."""
 
 
 class SearchTool(Protocol):
+    """Protocol for a web search tool that returns normalized results."""
+
     def search(self, query: str) -> list[SearchResult]:
         """Return web search results for the query."""
 
 
 class ResearchAgent:
+    """Coordinate web search and LLM extraction for one item."""
+
     def __init__(
         self,
         llm_client: AnswerClient | None = None,
         search_tool: SearchTool | None = None,
         item_label: str | None = None,
     ) -> None:
+        """Initialize the agent with injected clients or the configured defaults.
+
+        Args:
+            llm_client: Optional implementation used to generate answers.
+            search_tool: Optional implementation used to search for evidence.
+            item_label: Description of the item type included in queries and prompts.
+        """
         self.llm_client = llm_client or LLMClient()
         self.search_tool = search_tool or WebSearchTool()
         self.item_label = item_label or settings.item_label
@@ -43,6 +56,15 @@ class ResearchAgent:
     def collect_item_with_confidence(
         self, item_id: str, fields: list[str] | None = None
     ) -> tuple[dict[str, str], dict[str, float | None], TokenUsage]:
+        """Research an item and extract its requested fields.
+
+        Args:
+            item_id: Identifier of the item to research.
+            fields: Fields to extract; defaults to the configured target fields.
+
+        Returns:
+            A tuple of field values, per-field confidence scores, and accumulated LLM usage.
+        """
         output_fields = ensure_sources_field(fields or settings.target_fields)
         query = build_search_query(item_id, self.item_label, output_fields)
         search_results = self.search_tool.search(query)
@@ -91,6 +113,18 @@ class ResearchAgent:
         provider: str,
         model: str,
     ) -> tuple[dict[str, str] | None, dict[str, float | None] | None, str]:
+        """Load a cached extraction for the current item and search context.
+
+        Args:
+            item_id: Item identifier used to construct the cache key.
+            output_fields: Fields expected in the cached extraction.
+            search_results: Search evidence included in the cache key.
+            provider: LLM provider name included in the cache key.
+            model: LLM model name included in the cache key.
+
+        Returns:
+            Cached values and confidence, or ``None`` for both on a cache miss, plus the cache key.
+        """
         payload = {
             "item_id": item_id,
             "item_label": self.item_label,
@@ -121,6 +155,16 @@ class ResearchAgent:
     def _execute_llm_retry_loop(
         self, item_id: str, prompt: str, output_fields: list[str]
     ) -> tuple[dict[str, str], dict[str, float | None], TokenUsage]:
+        """Request and parse an LLM response, retrying schema validation failures.
+
+        Args:
+            item_id: Identifier used in log messages.
+            prompt: Prompt sent to the LLM.
+            output_fields: Fields that the parsed response must contain.
+
+        Returns:
+            Parsed values, confidence scores, and usage accumulated across attempts.
+        """
         max_attempts = max(1, settings.llm_validation_max_attempts)
         last_raw = ""
         best_fallback: tuple[dict[str, str], dict[str, float | None]] | None = None
@@ -175,6 +219,15 @@ class ResearchAgent:
         values: dict[str, str],
         confidence: dict[str, float | None],
     ) -> None:
+        """Cache extracted values when the response contains useful data.
+
+        Args:
+            cache_key: Key identifying the item, prompt context, provider, and model.
+            provider: Provider name stored with the cache entry.
+            model: Model name stored with the cache entry.
+            values: Extracted field values.
+            confidence: Per-field confidence scores.
+        """
         has_extracted_data = any(
             v not in {None, "", "Not found"} for k, v in values.items() if k != SOURCES_FIELD
         )
@@ -191,16 +244,43 @@ class ResearchAgent:
             )
 
     def collect_item(self, item_id: str, fields: list[str] | None = None) -> dict[str, str]:
+        """Research an item and return its field values.
+
+        Args:
+            item_id: Identifier of the item to research.
+            fields: Fields to extract; defaults to the configured target fields.
+
+        Returns:
+            Mapping of requested field names to extracted text values.
+        """
         values, _, _usage = self.collect_item_with_confidence(item_id, fields)
         return values
 
 
 def ensure_sources_field(fields: list[str]) -> list[str]:
+    """Return a field list containing the Sources field.
+
+    Args:
+        fields: Requested output field names.
+
+    Returns:
+        The original list if Sources is present, otherwise a new list with Sources appended.
+    """
     if SOURCES_FIELD in fields:
         return fields
     return [*fields, SOURCES_FIELD]
 
 
 def build_search_query(item_id: str, item_label: str, fields: list[str]) -> str:
+    """Build a query for finding technical information about an item.
+
+    Args:
+        item_id: Identifier of the item.
+        item_label: Name of the item type, such as ``spare part``.
+        fields: Fields to guide the search. The Sources field is omitted.
+
+    Returns:
+        Search query text.
+    """
     searchable_fields = [field for field in fields if field != SOURCES_FIELD]
     return f"{item_label} {item_id} technical information {' '.join(searchable_fields)}"

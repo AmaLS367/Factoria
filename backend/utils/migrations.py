@@ -12,12 +12,16 @@ SOURCES_FIELD_NAME = "Sources"
 
 @dataclass(frozen=True)
 class MigrationContext:
+    """Per-run configuration supplied to legacy migration steps."""
+
     identifier_column: str
     fields: list[str]
 
 
 @dataclass(frozen=True)
 class Migration:
+    """Versioned legacy migration and the function that applies it."""
+
     version: int
     name: str
     apply: Callable[[sqlite3.Cursor, MigrationContext], None]
@@ -29,6 +33,11 @@ def run_migrations(
     fields: list[str],
 ) -> None:
     """Run legacy schema migrations.
+
+    Args:
+        conn: Open SQLite connection; the caller commits the applied changes.
+        identifier_column: Configured item identifier field name.
+        fields: Configured output fields used to build legacy tables.
 
     DEPRECATED: This custom migration scheme has been replaced by Alembic.
     It is preserved solely for backward compatibility to bridge existing databases
@@ -67,6 +76,11 @@ def run_migrations(
 
 
 def ensure_migration_table(cur: sqlite3.Cursor) -> None:
+    """Create the legacy migration history table if absent.
+
+    Args:
+        cur: Cursor used to execute schema statements.
+    """
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -79,6 +93,12 @@ def ensure_migration_table(cur: sqlite3.Cursor) -> None:
 
 
 def create_results_table(cur: sqlite3.Cursor, context: MigrationContext) -> None:
+    """Create the legacy results table from configured identifier and field names.
+
+    Args:
+        cur: Cursor used to execute schema statements.
+        context: Identifier and output-field configuration.
+    """
     columns = [f"{quote_identifier(context.identifier_column)} TEXT UNIQUE"]
     for field in context.fields:
         if field != context.identifier_column:
@@ -108,6 +128,12 @@ def create_results_table(cur: sqlite3.Cursor, context: MigrationContext) -> None
 
 def sync_configured_result_columns(cur: sqlite3.Cursor, context: MigrationContext) -> None:
     # Check if results exists first
+    """Add missing configured columns and ensure an identifier index.
+
+    Args:
+        cur: Cursor used to inspect and alter the database.
+        context: Identifier and output-field configuration.
+    """
     table_exists = (
         cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='results'").fetchone()
         is not None
@@ -129,6 +155,12 @@ def sync_configured_result_columns(cur: sqlite3.Cursor, context: MigrationContex
 
 
 def ensure_identifier_index(cur: sqlite3.Cursor, identifier_column: str) -> None:
+    """Create a unique index for the legacy identifier column when applicable.
+
+    Args:
+        cur: Cursor used to execute the index statement.
+        identifier_column: Name of the identifier column.
+    """
     if identifier_column.lower() == "id":
         return
     index_name = f"idx_results_{identifier_column}_unique"
@@ -142,6 +174,14 @@ def ensure_identifier_index(cur: sqlite3.Cursor, identifier_column: str) -> None
 
 
 def rename_legacy_table(cur: sqlite3.Cursor) -> bool:
+    """Rename ``results`` to ``legacy_results`` when migration is needed.
+
+    Args:
+        cur: Cursor used to inspect and rename tables.
+
+    Returns:
+        ``True`` if legacy rows are available for migration.
+    """
     table_exists = (
         cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='results'").fetchone()
         is not None
@@ -162,6 +202,11 @@ def rename_legacy_table(cur: sqlite3.Cursor) -> bool:
 
 
 def create_runs_table(cur: sqlite3.Cursor) -> None:
+    """Create the run metadata table if absent.
+
+    Args:
+        cur: Cursor used to execute the schema statement.
+    """
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS runs (
@@ -179,6 +224,11 @@ def create_runs_table(cur: sqlite3.Cursor) -> None:
 
 
 def create_items_table(cur: sqlite3.Cursor) -> None:
+    """Create the normalized items table and its unique identifier index.
+
+    Args:
+        cur: Cursor used to execute schema statements.
+    """
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS items (
@@ -199,6 +249,11 @@ def create_items_table(cur: sqlite3.Cursor) -> None:
 
 
 def create_item_fields_table(cur: sqlite3.Cursor) -> None:
+    """Create the normalized extracted-fields table and unique item-field index.
+
+    Args:
+        cur: Cursor used to execute schema statements.
+    """
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS item_fields (
@@ -219,6 +274,11 @@ def create_item_fields_table(cur: sqlite3.Cursor) -> None:
 
 
 def create_item_sources_table(cur: sqlite3.Cursor) -> None:
+    """Create the normalized source records table.
+
+    Args:
+        cur: Cursor used to execute the schema statement.
+    """
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS item_sources (
@@ -236,6 +296,12 @@ def create_item_sources_table(cur: sqlite3.Cursor) -> None:
 
 
 def create_normalized_tables(cur: sqlite3.Cursor, context: MigrationContext) -> None:
+    """Create normalized tables and import rows from a legacy table if present.
+
+    Args:
+        cur: Cursor used to execute schema statements.
+        context: Identifier and field configuration for the legacy import.
+    """
     should_migrate = rename_legacy_table(cur)
 
     create_runs_table(cur)
@@ -249,6 +315,12 @@ def create_normalized_tables(cur: sqlite3.Cursor, context: MigrationContext) -> 
 
 def _migrate_legacy_data(cur: sqlite3.Cursor, context: MigrationContext) -> None:
     # 1. Create or fetch a dummy run for legacy data
+    """Import legacy result rows into normalized item, field, and source tables.
+
+    Args:
+        cur: Cursor used to read legacy rows and write normalized records.
+        context: Identifier and field configuration for the import.
+    """
     cur.execute("SELECT id FROM runs WHERE status = 'legacy_migrated'")
     run_row = cur.fetchone()
     if run_row:
@@ -346,6 +418,12 @@ def _migrate_legacy_data(cur: sqlite3.Cursor, context: MigrationContext) -> None
 
 
 def create_jobs_table(cur: sqlite3.Cursor, context: MigrationContext) -> None:
+    """Create the job tracking table if absent.
+
+    Args:
+        cur: Cursor used to execute the schema statement.
+        context: Migration context (unused by this migration).
+    """
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS jobs (
@@ -369,15 +447,33 @@ def create_jobs_table(cur: sqlite3.Cursor, context: MigrationContext) -> None:
 
 
 def add_source_credibility_score(cur: sqlite3.Cursor, _context: MigrationContext) -> None:
+    """Add the credibility score column to source records.
+
+    Args:
+        cur: Cursor used to alter the database.
+        _context: Migration context, unused by this step.
+    """
     cur.execute("ALTER TABLE item_sources ADD COLUMN credibility_score REAL")
 
 
 def add_job_import_config(cur: sqlite3.Cursor, _context: MigrationContext) -> None:
+    """Add worksheet and identifier-column settings to job records.
+
+    Args:
+        cur: Cursor used to alter the database.
+        _context: Migration context, unused by this step.
+    """
     cur.execute("ALTER TABLE jobs ADD COLUMN sheet_name TEXT")
     cur.execute("ALTER TABLE jobs ADD COLUMN column_name TEXT")
 
 
 def create_cache_table(cur: sqlite3.Cursor, context: MigrationContext) -> None:
+    """Create the persistent cache table and expiration index.
+
+    Args:
+        cur: Cursor used to execute schema statements.
+        context: Migration context (unused by this migration).
+    """
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS cache_entries (
@@ -397,15 +493,35 @@ def create_cache_table(cur: sqlite3.Cursor, context: MigrationContext) -> None:
 
 
 def quote_identifier(identifier: str) -> str:
+    """Quote an identifier for use in a SQLite statement.
+
+    Args:
+        identifier: Table, column, or index name.
+
+    Returns:
+        Double-quoted identifier with embedded quotes escaped.
+    """
     return f'"{identifier.replace(chr(34), chr(34) + chr(34))}"'
 
 
 def add_job_template_fields(cur: sqlite3.Cursor, _context: MigrationContext) -> None:
+    """Add target fields and item label columns to jobs.
+
+    Args:
+        cur: Cursor used to alter the database.
+        _context: Migration context, unused by this step.
+    """
     cur.execute("ALTER TABLE jobs ADD COLUMN target_fields TEXT")
     cur.execute("ALTER TABLE jobs ADD COLUMN item_label TEXT")
 
 
 def add_job_token_accounting(cur: sqlite3.Cursor, _context: MigrationContext) -> None:
+    """Add LLM usage totals to job records.
+
+    Args:
+        cur: Cursor used to alter the database.
+        _context: Migration context, unused by this step.
+    """
     cur.execute("ALTER TABLE jobs ADD COLUMN total_prompt_tokens INTEGER DEFAULT 0")
     cur.execute("ALTER TABLE jobs ADD COLUMN total_completion_tokens INTEGER DEFAULT 0")
     cur.execute("ALTER TABLE jobs ADD COLUMN total_llm_requests INTEGER DEFAULT 0")
@@ -413,6 +529,12 @@ def add_job_token_accounting(cur: sqlite3.Cursor, _context: MigrationContext) ->
 
 
 def add_item_token_accounting(cur: sqlite3.Cursor, _context: MigrationContext) -> None:
+    """Add LLM usage totals to item records.
+
+    Args:
+        cur: Cursor used to alter the database.
+        _context: Migration context, unused by this step.
+    """
     cur.execute("ALTER TABLE items ADD COLUMN prompt_tokens INTEGER DEFAULT 0")
     cur.execute("ALTER TABLE items ADD COLUMN completion_tokens INTEGER DEFAULT 0")
     cur.execute("ALTER TABLE items ADD COLUMN llm_requests INTEGER DEFAULT 0")
@@ -420,6 +542,12 @@ def add_item_token_accounting(cur: sqlite3.Cursor, _context: MigrationContext) -
 
 
 def add_human_review_fields(cur: sqlite3.Cursor, _context: MigrationContext) -> None:
+    """Add review metadata and assign initial statuses to existing fields.
+
+    Args:
+        cur: Cursor used to alter and backfill the database.
+        _context: Migration context, unused by this step.
+    """
     cur.execute("ALTER TABLE item_fields ADD COLUMN original_value TEXT")
     cur.execute("ALTER TABLE item_fields ADD COLUMN review_status TEXT DEFAULT 'needs_review'")
     cur.execute("ALTER TABLE item_fields ADD COLUMN reviewed_at TEXT")

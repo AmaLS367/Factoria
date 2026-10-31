@@ -66,7 +66,15 @@ _PRICE_TABLE: dict[str, tuple[float, float]] = {
 
 
 def get_price_per_1k(model: str) -> tuple[float, float]:
-    """Return input/output USD per 1k tokens for a model."""
+    """Look up input and output prices per 1,000 tokens for a model.
+
+    Args:
+        model: Model identifier matched against the built-in price table.
+
+    Returns:
+        Tuple of input and output prices in USD per 1,000 tokens. Unknown models use configured
+        fallback rates.
+    """
     lower = model.lower()
     for key, prices in _PRICE_TABLE.items():
         if key in lower:
@@ -75,6 +83,16 @@ def get_price_per_1k(model: str) -> tuple[float, float]:
 
 
 def estimate_cost(prompt_tokens: int, completion_tokens: int, model: str) -> float:
+    """Estimate the API cost for token usage.
+
+    Args:
+        prompt_tokens: Number of input tokens.
+        completion_tokens: Number of output tokens.
+        model: Model name used to choose pricing.
+
+    Returns:
+        Estimated cost in USD, rounded to eight decimal places.
+    """
     input_price, output_price = get_price_per_1k(model)
     return round(
         (prompt_tokens / 1000) * input_price + (completion_tokens / 1000) * output_price,

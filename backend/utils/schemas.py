@@ -12,7 +12,7 @@ class LLMExtractionResponse(BaseModel):
     """Strict schema for the LLM extract response.
 
     Enforces the outer shape:
-        {"values": {field_name: any}, "confidence": {field_name: any}}
+    {"values": {field_name: any}, "confidence": {field_name: any}}
 
     Field-level type coercion (string conversion of values, float clamping of
     confidence) is handled downstream in `parse_answer_strict`. The schema
@@ -28,6 +28,8 @@ class LLMExtractionResponse(BaseModel):
 
 @dataclass
 class TokenUsage:
+    """Token counts, request count, and estimated cost for LLM calls."""
+
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
@@ -35,6 +37,14 @@ class TokenUsage:
     llm_requests: int = 0
 
     def __add__(self, other: "TokenUsage") -> "TokenUsage":
+        """Add another usage record without mutating either input.
+
+        Args:
+            other: Usage record to add.
+
+        Returns:
+            New record containing summed counts and cost.
+        """
         return TokenUsage(
             prompt_tokens=self.prompt_tokens + other.prompt_tokens,
             completion_tokens=self.completion_tokens + other.completion_tokens,
@@ -45,6 +55,11 @@ class TokenUsage:
 
     @property
     def effective_llm_requests(self) -> int:
+        """Resolve the request count, inferring one when usage exists but no count was recorded.
+
+        Returns:
+            Explicit or inferred request count; zero when no usage is present.
+        """
         if self.llm_requests:
             return self.llm_requests
         if (

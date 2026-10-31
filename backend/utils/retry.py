@@ -19,7 +19,22 @@ def with_retry(
     max_delay: float,
     label: str = "",
 ) -> T:
-    """Call fn(), retrying on retryable errors with exponential backoff + jitter."""
+    """Call a function, retrying selected transient API errors with backoff and jitter.
+
+    Args:
+        fn: Zero-argument callable to invoke.
+        max_attempts: Maximum total attempts, including the initial call.
+        base_delay: Initial backoff delay in seconds.
+        max_delay: Maximum computed backoff delay in seconds.
+        label: Operation name included in retry logs.
+
+    Returns:
+        The value returned by ``fn`` on its first successful attempt.
+
+    Raises:
+        Exception: The final retryable error after attempts are exhausted, or any non-retryable
+            error immediately.
+    """
     attempt = 0
     while True:
         try:

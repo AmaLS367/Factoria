@@ -24,6 +24,7 @@ console = Console()
 
 
 def process_single_item(item_id: str) -> None:
+    """Research one item, display its extracted data, and save the result."""
     console.print(
         Panel(f"[bold blue]Processing {settings.item_label}:[/] [green]{item_id}[/]", expand=False)
     )
@@ -66,6 +67,7 @@ def process_single_item(item_id: str) -> None:
 
 
 def search_item(item_id: str) -> None:
+    """Search the web for an item and print normalized results as JSON."""
     output_fields = ensure_sources_field(settings.target_fields)
     query = build_search_query(item_id, settings.item_label, output_fields)
     results = WebSearchTool().search(query)
@@ -73,6 +75,7 @@ def search_item(item_id: str) -> None:
 
 
 def run_review_mode(limit: int, as_json: bool) -> None:
+    """Review queued fields interactively or print them as JSON."""
     queue = fetch_review_queue(status="needs_review", limit=limit)
     if as_json:
         print(json.dumps(queue, ensure_ascii=False, indent=2))
@@ -154,6 +157,7 @@ def run_review_mode(limit: int, as_json: bool) -> None:
 
 
 def main() -> None:
+    """Parse CLI arguments and run the requested collection, search, or review action."""
     parser = argparse.ArgumentParser(description="AI Data Collector CLI")
     parser.add_argument("item", nargs="*", help="Item identifier or search query")
     parser.add_argument("--search", action="store_true", help="Run only the web search tool")

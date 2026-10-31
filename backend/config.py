@@ -2,6 +2,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """Application settings loaded from environment variables and the .env file."""
+
     # Retry Settings
     retry_max_attempts: int = 3
     retry_base_delay_seconds: float = 1.0
@@ -26,15 +28,18 @@ class Settings(BaseSettings):
 
     @property
     def resolved_llm_provider(self) -> str:
+        """Return the normalized provider name, defaulting to OpenAI-compatible."""
         provider = self.llm_provider if self.llm_provider else "openai-compatible"
         return provider.lower()
 
     @property
     def resolved_llm_api_key(self) -> str:
+        """Return the configured LLM API key with legacy fallback."""
         return self.llm_api_key if self.llm_api_key else self.openai_api_key
 
     @property
     def resolved_llm_base_url(self) -> str:
+        """Return the configured base URL or the provider-specific default."""
         if self.llm_base_url:
             return self.llm_base_url
         provider = self.resolved_llm_provider
@@ -46,10 +51,12 @@ class Settings(BaseSettings):
 
     @property
     def resolved_llm_model(self) -> str:
+        """Return the configured model name with legacy fallback."""
         return self.llm_model if self.llm_model else self.model_name
 
     @property
     def resolved_llm_timeout_seconds(self) -> int:
+        """Return the request timeout configured for LLM calls."""
         return self.llm_timeout_seconds
 
     # Cache Settings

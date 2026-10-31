@@ -14,6 +14,16 @@ _JSON_PATTERN = re.compile(r"\{.*\}", re.DOTALL)
 def _normalize_fields(
     values_raw: dict[str, object], confidence_raw: dict[str, object], fields: list[str]
 ) -> tuple[dict[str, str], dict[str, float | None]]:
+    """Normalize requested values and confidence scores.
+
+    Args:
+        values_raw: Raw values mapping decoded from the response.
+        confidence_raw: Raw confidence mapping decoded from the response.
+        fields: Field names to include in the normalized output.
+
+    Returns:
+        Value mapping with missing entries set to ``Not found`` and confidence mapping clamped to 0–1.
+    """
     values: dict[str, str] = {}
     for field in fields:
         raw_val = values_raw.get(field)
@@ -37,12 +47,19 @@ def _normalize_fields(
 def parse_answer_strict(
     answer: str, fields: list[str]
 ) -> tuple[dict[str, str], dict[str, float | None]]:
-    """
-    Parses an LLM response with strict schema validation.
+    """Parse an LLM response and validate its required extraction shape.
+
+    Args:
+        answer: Raw text returned by the LLM; surrounding prose around a JSON object is allowed.
+        fields: Field names to include in the normalized output.
+
+    Returns:
+        Normalized field values and confidence scores. Missing values become ``Not found``;
+        invalid or missing confidence scores become ``None``.
 
     Raises:
-        LLMResponseValidationError: if the response is not parseable JSON or does
-        not match LLMExtractionResponse (missing or non-dict "values" key).
+        LLMResponseValidationError: If the response is not valid JSON or does not contain the
+            required ``values`` object.
     """
     json_match = _JSON_PATTERN.search(answer)
     raw_text = json_match.group() if json_match else answer
@@ -64,12 +81,18 @@ def parse_answer_strict(
 
 
 def parse_answer(answer: str, fields: list[str]) -> tuple[dict[str, str], dict[str, float | None]]:
-    """
-    Parses LLM response. Returns (values_dict, confidence_dict).
-    Supports {"values":{...}, "confidence":{...}} and legacy flat {"field": "value"}.
+    """Parse current or legacy LLM response formats without raising errors.
 
-    Lenient: never raises. Used as a final fallback after strict validation retries
-    have been exhausted.
+    Args:
+        answer: Raw text returned by the LLM.
+        fields: Field names to include in the normalized output.
+
+    Returns:
+        Normalized value and confidence mappings. If parsing fails, values are ``Not found`` and
+        confidence scores are ``None``.
+
+    Accepts the nested ``values``/``confidence`` format and the legacy flat field mapping. This
+    lenient parser is used after strict validation retries are exhausted.
     """
     try:
         json_match = _JSON_PATTERN.search(answer)

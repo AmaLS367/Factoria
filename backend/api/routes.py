@@ -45,11 +45,27 @@ logger = logging.getLogger(__name__)
 
 @router.get("/templates")
 def list_schema_templates() -> list[dict[str, Any]]:
+    """Return the built-in and user-defined schema templates.
+
+    Returns:
+        Template records serialized as dictionaries.
+    """
     return [dataclasses.asdict(t) for t in list_templates()]
 
 
 @router.get("/templates/{slug}")
 def get_schema_template(slug: str) -> dict[str, Any]:
+    """Look up a schema template by its slug.
+
+    Args:
+        slug: Template slug.
+
+    Returns:
+        The matching template as a dictionary.
+
+    Raises:
+        HTTPException: If no template has the requested slug (404).
+    """
     t = get_template(slug)
     if not t:
         raise HTTPException(status_code=404, detail="Template not found")
@@ -57,6 +73,8 @@ def get_schema_template(slug: str) -> dict[str, Any]:
 
 
 class TemplateCreateRequest(BaseModel):
+    """Validated request body for creating a schema template."""
+
     slug: str
     name: str
     description: str = ""
@@ -67,6 +85,17 @@ class TemplateCreateRequest(BaseModel):
 
 @router.post("/templates", status_code=201)
 def create_schema_template(request: TemplateCreateRequest) -> dict[str, Any]:
+    """Validate and save a user-defined schema template.
+
+    Args:
+        request: Template fields supplied by the API client.
+
+    Returns:
+        The saved template as a dictionary.
+
+    Raises:
+        HTTPException: If the slug or fields are invalid, or a built-in slug is used.
+    """
     if not re.match(r"^[a-z0-9-]+$", request.slug):
         raise HTTPException(
             status_code=400, detail="Slug must contain only lowercase letters, numbers, and hyphens"
@@ -96,6 +125,14 @@ def create_schema_template(request: TemplateCreateRequest) -> dict[str, Any]:
 
 @router.delete("/templates/{slug}", status_code=204)
 def delete_schema_template(slug: str) -> None:
+    """Delete a user-defined schema template.
+
+    Args:
+        slug: Slug of the template to delete.
+
+    Raises:
+        HTTPException: If the template is built-in or does not exist.
+    """
     try:
         found = delete_template(slug)
     except ValueError as e:
@@ -105,15 +142,24 @@ def delete_schema_template(slug: str) -> None:
 
 
 class SearchRequest(BaseModel):
+    """Validated request body containing a web search query."""
+
     query: str
 
 
 class CollectRequest(BaseModel):
+    """Validated request body containing an item identifier."""
+
     item_id: str
 
 
 @router.get("/health")
 def health() -> dict[str, Any]:
+    """Report API availability and whether the SQLite database is accessible.
+
+    Returns:
+        Application status and database status.
+    """
     db_status = "ok"
     try:
         db_path = get_db_path()
@@ -132,6 +178,11 @@ def health() -> dict[str, Any]:
 
 @router.get("/settings")
 def get_settings() -> dict[str, Any]:
+    """Return the non-secret runtime settings exposed to the frontend.
+
+    Returns:
+        Public model, search, file, collection, and review settings.
+    """
     return {
         "model_name": settings.model_name,
         "llm_provider": settings.llm_provider,
@@ -150,6 +201,14 @@ def get_settings() -> dict[str, Any]:
 
 @router.post("/search")
 def search(request: SearchRequest) -> list[dict[str, Any]]:
+    """Run a web search and serialize its results.
+
+    Args:
+        request: Search query supplied by the API client.
+
+    Returns:
+        Search results as dictionaries.
+    """
     tool = WebSearchTool()
     results = tool.search(request.query)
     return [result.to_dict() for result in results]
@@ -157,6 +216,17 @@ def search(request: SearchRequest) -> list[dict[str, Any]]:
 
 @router.post("/items/collect")
 def collect_item(request: CollectRequest) -> dict[str, Any]:
+    """Research one item and persist its extracted fields.
+
+    Args:
+        request: Request containing the item identifier.
+
+    Returns:
+        Extracted field values.
+
+    Raises:
+        HTTPException: If collection or database persistence fails.
+    """
     item_id = request.item_id
     agent = ResearchAgent()
     output_fields = ensure_sources_field(settings.target_fields)
@@ -181,6 +251,18 @@ async def preview_excel_file(
     file: UploadFile = File(...),  # noqa: B008
     sheet_name: str | None = None,
 ) -> dict[str, Any]:
+    """Read an uploaded CSV or Excel file and return a preview.
+
+    Args:
+        file: Uploaded spreadsheet or CSV file.
+        sheet_name: Optional worksheet to preview; the first worksheet is used by default.
+
+    Returns:
+        File type, worksheet names, columns, row count, and up to three sample rows.
+
+    Raises:
+        HTTPException: If the uploaded file cannot be parsed.
+    """
     try:
         raw = await file.read()
         filename = file.filename or ""
@@ -233,6 +315,22 @@ async def start_excel_job(
     target_fields: str | None = Form(default=None),  # noqa: B008
     item_label: str | None = Form(default=None),  # noqa: B008
 ) -> dict[str, str]:
+    """Save an uploaded spreadsheet and enqueue a background collection job.
+
+    Args:
+        background_tasks: FastAPI task queue used to start the worker after the response.
+        file: Uploaded input spreadsheet or CSV.
+        sheet_name: Optional worksheet to process.
+        column_name: Optional column containing item identifiers.
+        target_fields: Optional JSON array of fields to collect.
+        item_label: Optional label describing the items.
+
+    Returns:
+        Identifier and initial status of the queued job.
+
+    Raises:
+        HTTPException: If the field list is invalid or the upload cannot be queued.
+    """
     parsed_fields: list[str] | None = None
     if target_fields:
         try:
@@ -287,6 +385,17 @@ async def start_excel_job(
 
 @router.post("/jobs/{job_id}/cancel")
 def cancel_excel_job(job_id: str) -> dict[str, str]:
+    """Request cancellation of a queued or running spreadsheet job.
+
+    Args:
+        job_id: Identifier of the job to cancel.
+
+    Returns:
+        Job identifier and cancelled status.
+
+    Raises:
+        HTTPException: If the job is missing or cannot be cancelled in its current state.
+    """
     job = get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -300,6 +409,18 @@ def cancel_excel_job(job_id: str) -> dict[str, str]:
 
 @router.post("/jobs/{job_id}/retry")
 def retry_excel_job(job_id: str, background_tasks: BackgroundTasks) -> dict[str, str]:
+    """Create and enqueue a new job using a failed or cancelled job as input.
+
+    Args:
+        job_id: Identifier of the previous job.
+        background_tasks: FastAPI task queue used to start the worker after the response.
+
+    Returns:
+        Identifier and initial status of the new job.
+
+    Raises:
+        HTTPException: If the previous job is missing, ineligible, or its input file is gone.
+    """
     job = get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -367,11 +488,27 @@ def retry_excel_job(job_id: str, background_tasks: BackgroundTasks) -> dict[str,
 
 @router.get("/jobs")
 def list_jobs() -> list[dict[str, Any]]:
+    """Return the ten most recently created jobs.
+
+    Returns:
+        Job records as dictionaries.
+    """
     return get_recent_jobs(10)
 
 
 @router.get("/jobs/{job_id}")
 def get_job_status(job_id: str) -> dict[str, Any]:
+    """Fetch a job record by identifier.
+
+    Args:
+        job_id: Identifier of the job.
+
+    Returns:
+        Stored job record.
+
+    Raises:
+        HTTPException: If the job does not exist (404).
+    """
     job = get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -380,6 +517,17 @@ def get_job_status(job_id: str) -> dict[str, Any]:
 
 @router.get("/jobs/{job_id}/cost-report")
 def get_job_cost_report(job_id: str) -> dict[str, Any]:
+    """Summarize token usage and estimated LLM cost for a job.
+
+    Args:
+        job_id: Identifier of the job.
+
+    Returns:
+        Job status, token counts, request count, estimated cost, provider, and model.
+
+    Raises:
+        HTTPException: If the job does not exist (404).
+    """
     job = get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -400,6 +548,17 @@ def get_job_cost_report(job_id: str) -> dict[str, Any]:
 
 @router.get("/jobs/{job_id}/export", response_class=FileResponse, response_model=None)
 def export_job_file(job_id: str) -> Any:
+    """Download the output spreadsheet for a completed job.
+
+    Args:
+        job_id: Identifier of the job.
+
+    Returns:
+        Spreadsheet file response, or a JSON 404 response if the output file is missing.
+
+    Raises:
+        HTTPException: If the job is missing or has not completed.
+    """
     job = get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -420,6 +579,18 @@ def export_job_file(job_id: str) -> Any:
 
 @router.get("/items")
 def list_items(limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
+    """Return a page of collected item records.
+
+    Args:
+        limit: Maximum number of records to return (1–1000).
+        offset: Number of records to skip.
+
+    Returns:
+        Item records as dictionaries.
+
+    Raises:
+        HTTPException: If the limit or offset is outside the accepted range.
+    """
     if limit < 1 or limit > 1000:
         raise HTTPException(status_code=400, detail="limit must be between 1 and 1000")
     if offset < 0:
@@ -440,6 +611,11 @@ def list_items(limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
 
 @router.get("/export/latest", response_class=FileResponse, response_model=None)
 def export_latest() -> Any:
+    """Download the configured output spreadsheet if it exists.
+
+    Returns:
+        Spreadsheet file response, or a JSON 404 response if the file is missing.
+    """
     if os.path.exists(settings.output_file):
         return FileResponse(
             settings.output_file,
@@ -455,6 +631,19 @@ def get_item_fields(
     identifier_column: str | None = Query(default=None),
     run_id: int | None = Query(default=None),
 ) -> list[dict[str, Any]]:
+    """Fetch extracted fields for an item.
+
+    Args:
+        identifier_value: Value used to identify the item.
+        identifier_column: Identifier column name; defaults to the configured column.
+        run_id: Optional run ID used to disambiguate repeated identifiers.
+
+    Returns:
+        Field names, values, and confidence scores.
+
+    Raises:
+        HTTPException: If the item is missing or the identifier matches multiple runs.
+    """
     db_path = get_db_path()
     if not os.path.exists(db_path):
         raise HTTPException(status_code=404, detail="Item not found")
@@ -499,6 +688,19 @@ def get_item_sources(
     identifier_column: str | None = Query(default=None),
     run_id: int | None = Query(default=None),
 ) -> list[dict[str, Any]]:
+    """Fetch sources recorded for an item.
+
+    Args:
+        identifier_value: Value used to identify the item.
+        identifier_column: Identifier column name; defaults to the configured column.
+        run_id: Optional run ID used to disambiguate repeated identifiers.
+
+    Returns:
+        Source metadata ordered by credibility score.
+
+    Raises:
+        HTTPException: If the item is missing or the identifier matches multiple runs.
+    """
     db_path = get_db_path()
     if not os.path.exists(db_path):
         raise HTTPException(status_code=404, detail="Item not found")
@@ -548,6 +750,18 @@ _LOG_PATTERN = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d+) \[(\w+)\]
 
 @router.get("/logs")
 def get_logs(lines: int = 200, level: str = "") -> dict[str, Any]:
+    """Read recent application log entries and optionally filter by level.
+
+    Args:
+        lines: Number of most recent lines to inspect (1–5000).
+        level: Optional severity name, compared without regard to case.
+
+    Returns:
+        Matching entries, their count, and the log file path.
+
+    Raises:
+        HTTPException: If lines is outside the accepted range.
+    """
     if lines < 1 or lines > 5000:
         raise HTTPException(status_code=400, detail="lines must be between 1 and 5000")
 
@@ -580,6 +794,8 @@ def get_logs(lines: int = 200, level: str = "") -> dict[str, Any]:
 
 
 class ReviewUpdateRequest(BaseModel):
+    """Validated request body for approving, correcting, or rejecting a field."""
+
     status: Literal["approved", "corrected", "rejected"]
     field_value: str | None = None
     reviewer_note: str | None = None
@@ -592,6 +808,20 @@ def list_review_fields(
     offset: int = 0,
     job_id: str | None = None,
 ) -> list[dict[str, Any]]:
+    """List review records matching a status and optional job.
+
+    Args:
+        status: Review status used to filter the queue.
+        limit: Maximum number of records to return (1–1000).
+        offset: Number of matching records to skip.
+        job_id: Optional job identifier used to scope the results.
+
+    Returns:
+        Review records as dictionaries.
+
+    Raises:
+        HTTPException: If pagination values or the status filter are invalid.
+    """
     if limit < 1 or limit > 1000:
         raise HTTPException(status_code=400, detail="limit must be between 1 and 1000")
     if offset < 0:
@@ -609,6 +839,18 @@ def list_review_fields(
 
 @router.patch("/reviews/fields/{field_id}")
 def review_field(field_id: int, request: ReviewUpdateRequest) -> dict[str, Any]:
+    """Apply a review decision to a field record.
+
+    Args:
+        field_id: Database ID of the field record.
+        request: Review action and optional corrected value or note.
+
+    Returns:
+        Updated review record.
+
+    Raises:
+        HTTPException: If the correction is invalid or the field does not exist.
+    """
     try:
         updated = update_field_review(
             field_id=field_id,
@@ -627,4 +869,12 @@ def review_field(field_id: int, request: ReviewUpdateRequest) -> dict[str, Any]:
 
 @router.get("/reviews/summary")
 def review_summary(job_id: str | None = None) -> dict[str, int]:
+    """Return review-status counts, optionally scoped to a job.
+
+    Args:
+        job_id: Optional job identifier.
+
+    Returns:
+        Counts keyed by review status.
+    """
     return get_review_summary(job_id=job_id)

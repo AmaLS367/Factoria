@@ -17,7 +17,18 @@ def _deterministic_json_dumps(obj: Any) -> str:
 
 
 def make_cache_key(kind: str, provider: str, model: str, payload: Any) -> str:
-    """Generate a unique cache key based on kind, provider, model, and deterministic payload."""
+    """Create a stable SHA-256 key for a provider operation and its input.
+
+    Args:
+        kind: Cache category, such as web search or LLM extraction.
+        provider: Provider identifier.
+        model: Model identifier, or a placeholder for non-LLM operations.
+        payload: JSON-serializable request data included in the key.
+
+    Returns:
+        Hexadecimal SHA-256 digest. Equivalent JSON payloads produce the same key regardless of
+        dictionary key order.
+    """
     payload_str = _deterministic_json_dumps(payload)
     input_hash = hashlib.sha256(payload_str.encode("utf-8")).hexdigest()
 
@@ -28,6 +39,11 @@ def make_cache_key(kind: str, provider: str, model: str, payload: Any) -> str:
 
 
 def _ensure_cache_table(conn: sqlite3.Connection) -> None:
+    """Create the cache table and expiry index if they are absent.
+
+    Args:
+        conn: Open SQLite connection on which to create the schema.
+    """
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS cache_entries (
@@ -54,7 +70,14 @@ def _get_connection() -> sqlite3.Connection:
 
 
 def get_cache(cache_key: str) -> Union[Dict[str, Any], List[Any], None]:
-    """Retrieve an entry from the cache, if it exists and is not expired."""
+    """Read a cached JSON payload if its entry exists and has not expired.
+
+    Args:
+        cache_key: Key previously created for the cached request.
+
+    Returns:
+        Cached dictionary or list, or ``None`` for a miss, expired or invalid entry, or read error.
+    """
     try:
         with _get_connection() as conn:
             _ensure_cache_table(conn)
@@ -108,7 +131,16 @@ def set_cache(
     payload: Any,
     ttl_days: int,
 ) -> None:
-    """Store an entry in the cache."""
+    """Serialize and store a cache payload with a time-to-live.
+
+    Args:
+        cache_key: Stable key identifying the request.
+        kind: Cache category.
+        provider: Provider identifier stored for inspection.
+        model: Model identifier stored for inspection.
+        payload: JSON-serializable value to cache.
+        ttl_days: Number of days until the entry expires.
+    """
     try:
         payload_json = _deterministic_json_dumps(payload)
         now = datetime.now(timezone.utc)

@@ -24,6 +24,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    """Replace the global item identifier index with a run-scoped unique index."""
     op.drop_index("idx_items_identifier", table_name="items")
     op.create_index(
         "idx_items_identifier",
@@ -34,6 +35,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Restore global identifier uniqueness.
+
+    Raises:
+        ValueError: If duplicate identifiers across runs would violate the restored index.
+    """
     conn = op.get_bind()
     result = conn.execute(
         text(

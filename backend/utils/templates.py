@@ -8,6 +8,8 @@ from backend.config import settings
 
 @dataclass
 class Template:
+    """Schema template describing an item type and its requested output fields."""
+
     slug: str
     name: str
     description: str
@@ -107,10 +109,20 @@ BUILTIN_TEMPLATES: list[Template] = [
 
 
 def _user_templates_path() -> str:
+    """Return the JSON path used to store user-defined templates.
+
+    Returns:
+        Path beside the configured SQLite database.
+    """
     return os.path.join(os.path.dirname(settings.db_path), "templates.json")
 
 
 def _load_user_templates() -> list[Template]:
+    """Load user templates from disk.
+
+    Returns:
+        Parsed templates, or an empty list if the file is absent or invalid.
+    """
     path = _user_templates_path()
     if not os.path.exists(path):
         return []
@@ -138,6 +150,11 @@ def _load_user_templates() -> list[Template]:
 
 
 def _save_user_templates(templates: list[Template]) -> None:
+    """Write user templates to disk.
+
+    Args:
+        templates: User templates to serialize.
+    """
     path = _user_templates_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
@@ -145,12 +162,23 @@ def _save_user_templates(templates: list[Template]) -> None:
 
 
 def list_templates() -> list[Template]:
-    """Return built-ins followed by user templates, merged."""
+    """Return built-in templates followed by templates loaded from disk.
+
+    Returns:
+        Combined list of built-in and user-defined templates.
+    """
     return BUILTIN_TEMPLATES + _load_user_templates()
 
 
 def get_template(slug: str) -> Optional[Template]:
-    """Return template by slug (built-in or user), None if not found."""
+    """Find a built-in or user-defined template by slug.
+
+    Args:
+        slug: Template slug to look up.
+
+    Returns:
+        Matching template, or ``None`` if no template has that slug.
+    """
     for t in list_templates():
         if t.slug == slug:
             return t
@@ -158,7 +186,14 @@ def get_template(slug: str) -> Optional[Template]:
 
 
 def save_template(template: Template) -> None:
-    """Save or overwrite a user template. Raises ValueError if slug collides with a built-in."""
+    """Create or replace a user-defined template.
+
+    Args:
+        template: Template to save; its ``is_builtin`` flag is set to ``False``.
+
+    Raises:
+        ValueError: If its slug matches a built-in template.
+    """
     for builtin in BUILTIN_TEMPLATES:
         if builtin.slug == template.slug:
             raise ValueError(f"Cannot overwrite built-in template '{template.slug}'.")
@@ -178,7 +213,17 @@ def save_template(template: Template) -> None:
 
 
 def delete_template(slug: str) -> bool:
-    """Delete a user template. Returns False if not found. Raises ValueError if it is a built-in."""
+    """Delete a user-defined template by slug.
+
+    Args:
+        slug: Slug of the template to remove.
+
+    Returns:
+        ``True`` if a template was deleted, otherwise ``False``.
+
+    Raises:
+        ValueError: If the slug belongs to a built-in template.
+    """
     for builtin in BUILTIN_TEMPLATES:
         if builtin.slug == slug:
             raise ValueError(f"Cannot delete built-in template '{slug}'.")

@@ -4,6 +4,17 @@ def generate_prompt(
     fields: list[str],
     web_context: str | None = None,
 ) -> str:
+    """Build the LLM extraction prompt.
+
+    Args:
+        item_id: Identifier of the item to describe.
+        item_label: Human-readable item type.
+        fields: Exact field names requested in the response.
+        web_context: Optional search evidence to include in the prompt.
+
+    Returns:
+        Prompt text specifying the JSON response shape and extraction rules.
+    """
     fields_str = ", ".join(fields)
     prompt = (
         f"Provide technical information for the {item_label} with ID '{item_id}'. "

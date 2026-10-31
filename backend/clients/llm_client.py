@@ -15,13 +15,26 @@ logger = logging.getLogger(__name__)
 
 
 class BaseLLMProvider(ABC):
+    """Abstract interface shared by language model providers."""
+
     @abstractmethod
     def get_answer(self, prompt: str) -> tuple[str, TokenUsage]:
+        """Generate a response for a prompt using a concrete provider.
+
+        Args:
+            prompt: Prompt text to send to the provider.
+
+        Returns:
+            Generated response text and the provider-reported token usage.
+        """
         pass
 
 
 class OpenAICompatibleProvider(BaseLLMProvider):
+    """Provider for OpenAI-compatible chat completion APIs."""
+
     def __init__(self) -> None:
+        """Initialize the provider with application settings."""
         self.client = OpenAI(
             api_key=settings.resolved_llm_api_key,
             base_url=settings.resolved_llm_base_url,
@@ -29,7 +42,16 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         self.model_name = settings.resolved_llm_model
 
     def get_answer(self, prompt: str) -> tuple[str, TokenUsage]:
+        """Send a prompt to the configured LLM provider.
+
+        Args:
+            prompt: User prompt to submit.
+
+        Returns:
+            Generated response text and token usage. Provider errors are logged and returned as empty text with zero usage.
+        """
         def _call() -> tuple[str, TokenUsage]:
+            """Issue one provider request and normalize its response and token usage."""
             response = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=[
@@ -69,12 +91,23 @@ class OpenAICompatibleProvider(BaseLLMProvider):
 
 
 class GeminiProvider(BaseLLMProvider):
+    """Provider for the Google Gemini generateContent API."""
+
     def __init__(self) -> None:
+        """Initialize the provider with application settings."""
         self.api_key = settings.resolved_llm_api_key
         self.model_name = settings.resolved_llm_model
         self.base_url = settings.resolved_llm_base_url
 
     def get_answer(self, prompt: str) -> tuple[str, TokenUsage]:
+        """Send a prompt to the configured LLM provider.
+
+        Args:
+            prompt: User prompt to submit.
+
+        Returns:
+            Generated response text and token usage. Provider errors are logged and returned as empty text with zero usage.
+        """
         url = f"{self.base_url.rstrip('/')}/{self.model_name}:generateContent?key={self.api_key}"
 
         payload: dict[str, Any] = {
@@ -84,6 +117,7 @@ class GeminiProvider(BaseLLMProvider):
         }
 
         def _call() -> tuple[str, TokenUsage]:
+            """Issue one provider request and normalize its response and token usage."""
             response = requests.post(
                 url, json=payload, timeout=settings.resolved_llm_timeout_seconds
             )
@@ -132,11 +166,22 @@ class GeminiProvider(BaseLLMProvider):
 
 
 class OllamaProvider(BaseLLMProvider):
+    """Provider for a locally hosted Ollama chat API."""
+
     def __init__(self) -> None:
+        """Initialize the provider with application settings."""
         self.base_url = settings.resolved_llm_base_url
         self.model_name = settings.resolved_llm_model
 
     def get_answer(self, prompt: str) -> tuple[str, TokenUsage]:
+        """Send a prompt to the configured LLM provider.
+
+        Args:
+            prompt: User prompt to submit.
+
+        Returns:
+            Generated response text and token usage. Provider errors are logged and returned as empty text with zero usage.
+        """
         url = f"{self.base_url.rstrip('/')}/api/chat"
 
         payload: dict[str, Any] = {
@@ -150,6 +195,7 @@ class OllamaProvider(BaseLLMProvider):
         }
 
         def _call() -> tuple[str, TokenUsage]:
+            """Issue one provider request and normalize its response and token usage."""
             response = requests.post(
                 url, json=payload, timeout=settings.resolved_llm_timeout_seconds
             )
@@ -185,9 +231,12 @@ class OllamaProvider(BaseLLMProvider):
 
 
 class LLMClient:
+    """Facade that selects the configured LLM provider."""
+
     provider: BaseLLMProvider
 
     def __init__(self) -> None:
+        """Initialize the provider with application settings."""
         provider_name = settings.resolved_llm_provider
 
         provider_map: dict[str, type[BaseLLMProvider]] = {
@@ -199,7 +248,12 @@ class LLMClient:
         self.provider = provider_class()
 
     def get_answer(self, prompt: str) -> tuple[str, TokenUsage]:
-        """
-        Sends a prompt to the LLM and returns the text response plus token usage.
+        """Send a prompt through the selected provider.
+
+        Args:
+            prompt: User prompt to submit.
+
+        Returns:
+            Generated response text and token usage.
         """
         return self.provider.get_answer(prompt)

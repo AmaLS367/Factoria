@@ -7,10 +7,26 @@ from backend.utils.db_writer import get_db_path
 
 
 def quote_identifier(identifier: str) -> str:
+    """Safely quote a SQLite identifier.
+
+    Args:
+        identifier: Table, column, or index name.
+
+    Returns:
+        Double-quoted identifier with embedded quotes escaped.
+    """
     return f'"{identifier.replace(chr(34), chr(34) + chr(34))}"'
 
 
 def list_tables(conn: sqlite3.Connection) -> list[str]:
+    """List non-internal tables in a SQLite database.
+
+    Args:
+        conn: Open SQLite connection.
+
+    Returns:
+        Table names ordered alphabetically.
+    """
     rows = conn.execute(
         """
         SELECT name
@@ -23,11 +39,29 @@ def list_tables(conn: sqlite3.Connection) -> list[str]:
 
 
 def list_columns(conn: sqlite3.Connection, table_name: str) -> list[tuple[str, str]]:
+    """Inspect the columns in one SQLite table.
+
+    Args:
+        conn: Open SQLite connection.
+        table_name: Name of the table to inspect.
+
+    Returns:
+        List of ``(column_name, declared_type)`` pairs.
+    """
     rows = conn.execute(f"PRAGMA table_info({quote_identifier(table_name)})").fetchall()
     return [(str(row[1]), str(row[2])) for row in rows]
 
 
 def schema_lines(db_path: str | None = None, table_name: str | None = None) -> list[str]:
+    """Build a human-readable schema listing.
+
+    Args:
+        db_path: Database file to inspect; defaults to the configured database.
+        table_name: Optional table to inspect; defaults to all user tables.
+
+    Returns:
+        Lines describing the database status and its tables and columns.
+    """
     resolved_path = os.path.abspath(db_path or get_db_path())
     lines = [f"Database: {resolved_path}"]
 
@@ -59,11 +93,22 @@ def schema_lines(db_path: str | None = None, table_name: str | None = None) -> l
 
 
 def show_columns(db_path: str | None = None, table_name: str | None = None) -> None:
+    """Print the schema listing to standard output.
+
+    Args:
+        db_path: Database file to inspect; defaults to the configured database.
+        table_name: Optional table to inspect; defaults to all user tables.
+    """
     for line in schema_lines(db_path, table_name):
         print(line)
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the argument parser for the schema inspection command.
+
+    Returns:
+        Configured ``argparse.ArgumentParser``.
+    """
     parser = argparse.ArgumentParser(description="Inspect SQLite table columns.")
     parser.add_argument(
         "--db-path",
@@ -79,6 +124,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    """Parse options and print database schema details.
+
+    Args:
+        argv: Optional argument list; defaults to command-line arguments.
+    """
     args = build_parser().parse_args(argv)
     show_columns(args.db_path, args.table)
 
