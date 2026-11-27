@@ -175,7 +175,8 @@ def save_single_item(
         item_id: Value stored in the identifier column.
         data: Mapping from output field names to extracted values.
         output_fields: Field names expected in ``data`` and written to the database.
-        run_id: Run to associate with the item; if omitted, the current run is initialized or reused.
+        run_id: Run to associate with the item; if omitted, the current run is
+            initialized or reused.
         confidence: Optional confidence score for each output field.
         token_usage: Optional LLM token and cost totals for this item.
         identifier_column: Identifier field name; defaults to the configured column.
