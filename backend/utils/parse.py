@@ -22,7 +22,8 @@ def _normalize_fields(
         fields: Field names to include in the normalized output.
 
     Returns:
-        Value mapping with missing entries set to ``Not found`` and confidence mapping clamped to 0–1.
+        Value mapping with missing entries set to ``Not found`` and confidence
+        mapping clamped to 0–1.
     """
     values: dict[str, str] = {}
     for field in fields:
