@@ -48,7 +48,8 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             prompt: User prompt to submit.
 
         Returns:
-            Generated response text and token usage. Provider errors are logged and returned as empty text with zero usage.
+            Generated response text and token usage. Provider errors are logged and
+            returned as empty text with zero usage.
         """
         def _call() -> tuple[str, TokenUsage]:
             """Issue one provider request and normalize its response and token usage."""
@@ -106,7 +107,8 @@ class GeminiProvider(BaseLLMProvider):
             prompt: User prompt to submit.
 
         Returns:
-            Generated response text and token usage. Provider errors are logged and returned as empty text with zero usage.
+            Generated response text and token usage. Provider errors are logged and
+            returned as empty text with zero usage.
         """
         url = f"{self.base_url.rstrip('/')}/{self.model_name}:generateContent?key={self.api_key}"
 
@@ -180,7 +182,8 @@ class OllamaProvider(BaseLLMProvider):
             prompt: User prompt to submit.
 
         Returns:
-            Generated response text and token usage. Provider errors are logged and returned as empty text with zero usage.
+            Generated response text and token usage. Provider errors are logged and
+            returned as empty text with zero usage.
         """
         url = f"{self.base_url.rstrip('/')}/api/chat"
 
